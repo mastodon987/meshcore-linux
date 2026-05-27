@@ -33,6 +33,9 @@ class Mesh : public Dispatcher {
   //void routeRecvAcks(Packet* packet, uint32_t delay_millis);
   DispatcherAction forwardMultipartDirect(Packet* pkt);
 
+private:
+  MeshCoreIntegration* mqtt_integration;
+
 protected:
   DispatcherAction onRecvPacket(Packet* pkt) override;
 
@@ -174,8 +177,25 @@ protected:
 
 public:
   void begin();
+
+  Mesh() : mqtt_integration(nullptr) {}
+    
+    // Initialize MQTT integration during setup
+    void initMQTT(const mqtt::MQTTConfig& config) {
+        mqtt_integration = new MeshCoreIntegration(this, config);
+        mqtt_integration->begin();
+    }
+
   void loop();
 
+  // Call from Dispatcher::processRecvPacket() when packet is decrypted
+    DispatcherAction onRecvPacket(Packet* pkt) override {
+        // Decryption happens here in existing code
+        // After decryption, call:
+        if (mqtt_integration) {
+            mqtt_integration->onPacketReceived(pkt->payload, pkt->payload_len);
+        }
+        
   LocalIdentity self_id;
 
   RNG* getRNG() const { return _rng; }
