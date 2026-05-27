@@ -5,6 +5,14 @@
 #include <string>
 #include <vector>
 #include <cstring>
+#include <memory>
+#include <mutex>
+
+// Forward declaration for MQTT client
+namespace mqtt {
+    class async_client;
+    class connect_options;
+}
 
 namespace mqtt {
 
@@ -224,6 +232,14 @@ private:
     bool _initialized = false;
     uint32_t _last_cleanup = 0;
     
+    // MQTT client (paho client pointer)
+    std::shared_ptr<mqtt::async_client> _client;
+    std::shared_ptr<mqtt::connect_options> _conn_opts;
+    
+    // Thread safety
+    mutable std::mutex _queue_mutex;
+    mutable std::mutex _route_mutex;
+    
     /**
      * @brief Clean up expired messages from queues
      */
@@ -236,6 +252,14 @@ private:
      * @return Pointer to route if found, nullptr otherwise
      */
     const HashRoute* findRoute(HashSize hash_size, const uint8_t* hash) const;
+    
+    /**
+     * @brief Subscribe to all configured topics
+     */
+    void subscribeToTopics();
+    
+    // Make callback class a friend to access private members
+    friend class MQTTCallback;
     
 public:
     /**
@@ -251,12 +275,14 @@ public:
     
     /**
      * @brief Initialize the bridge
+     * Connects to MQTT broker and subscribes to configured topics
      * @return true if successful
      */
     bool begin();
     
     /**
      * @brief Shut down the bridge
+     * Disconnects from MQTT broker and cleans up resources
      */
     void end();
     
@@ -313,9 +339,7 @@ public:
      * @brief Get count of pending outbound messages
      * @return Number of messages waiting to be sent
      */
-    size_t getOutboundCount() const {
-        return _outbound_queue.size();
-    }
+    size_t getOutboundCount() const;
     
     // ===== Inbound: Meshcore -> App =====
     
@@ -351,9 +375,7 @@ public:
      * @brief Get count of pending inbound messages
      * @return Number of messages waiting for application
      */
-    size_t getInboundCount() const {
-        return _inbound_queue.size();
-    }
+    size_t getInboundCount() const;
     
     // ===== Configuration =====
     
@@ -377,9 +399,13 @@ public:
      * @brief Get number of configured routes
      * @return Number of hash->topic mappings
      */
-    size_t getRouteCount() const {
-        return _routes.size();
-    }
+    size_t getRouteCount() const;
+    
+    /**
+     * @brief Check if MQTT client is connected
+     * @return true if connected to broker
+     */
+    bool isConnected() const;
 };
 
 } // namespace mqtt
