@@ -32,6 +32,16 @@ void portduinoSetup() {
 void LinuxBoard::begin() {
   config.load("/etc/meshcored/meshcored.ini");
 
+  // Load MQTT configuration from INI
+    if (mqtt::MQTTConfigParser::parseFromFile("/etc/meshcored/meshcored.ini", mqtt_config)) {
+        if (mqtt_config.enabled) {
+            mqtt_integration = new MeshCoreIntegration(&the_mesh, mqtt_config);
+            if (mqtt_integration->begin()) {
+                Serial.println("MQTT integration started");
+            }
+        }
+    }
+  
   Serial.printf("SPI begin %s\n", config.spidev);
   SPI.begin(config.spidev);
 
