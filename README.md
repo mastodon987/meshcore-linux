@@ -2,12 +2,19 @@
 
 for compilation with pio use variant linux_repeater_mqtt
 
-Added cli commands:
+
+## Added CLI commands:
+
 set bridge.mqtt.server
+
 set bridge.mqtt.port
+
 set bridge.mqtt.topic
+
 set bridge.mqtt.user
+
 set bridge.mqtt.pass
+
 
 ## About MeshCore
 
