@@ -33,9 +33,6 @@ class Mesh : public Dispatcher {
   //void routeRecvAcks(Packet* packet, uint32_t delay_millis);
   DispatcherAction forwardMultipartDirect(Packet* pkt);
 
-private:
-  MeshCoreIntegration* mqtt_integration;
-
 protected:
   DispatcherAction onRecvPacket(Packet* pkt) override;
 
@@ -48,7 +45,7 @@ protected:
 
   /**
    * \brief    Called _before_ the packet is dispatched to the on..Recv() methods.
-   * \returns  true, if given packet should be NOT be processed.
+   * \returns  true, if given packet should NOT be processed.
    */
   virtual bool filterRecvFloodPacket(Packet* packet) { return false; }
 
@@ -110,7 +107,7 @@ protected:
 
   /**
    * \brief  A path TO peer (sender_idx) has been received. (also with optional 'extra' data encoded)
-   *         NOTE: these can be received multiple times (per sender), via differen routes
+   *         NOTE: these can be received multiple times (per sender), via different routes
    * \param  sender_idx  index of peer, [0..n) where n is what searchPeersByHash() returned
    * \param  secret   the pre-calculated shared-secret (handy for sending response packet)
    * \returns   true, if path was accepted and that reciprocal path should be sent
@@ -133,7 +130,7 @@ protected:
 
   /**
    * \brief  A path TO 'sender' has been received. (also with optional 'extra' data encoded)
-   *         NOTE: these can be received multiple times (per sender), via differen routes
+   *         NOTE: these can be received multiple times (per sender), via different routes
   */
   virtual void onPathRecv(Packet* packet, Identity& sender, uint8_t* path, uint8_t path_len, uint8_t extra_type, uint8_t* extra, uint8_t extra_len) { }
 
@@ -177,25 +174,8 @@ protected:
 
 public:
   void begin();
-
-  Mesh() : mqtt_integration(nullptr) {}
-    
-    // Initialize MQTT integration during setup
-    void initMQTT(const mqtt::MQTTConfig& config) {
-        mqtt_integration = new MeshCoreIntegration(this, config);
-        mqtt_integration->begin();
-    }
-
   void loop();
 
-  // Call from Dispatcher::processRecvPacket() when packet is decrypted
-    DispatcherAction onRecvPacket(Packet* pkt) override {
-        // Decryption happens here in existing code
-        // After decryption, call:
-        if (mqtt_integration) {
-            mqtt_integration->onPacketReceived(pkt->payload, pkt->payload_len);
-        }
-        
   LocalIdentity self_id;
 
   RNG* getRNG() const { return _rng; }
@@ -205,8 +185,10 @@ public:
   Packet* createDatagram(uint8_t type, const Identity& dest, const uint8_t* secret, const uint8_t* data, size_t len);
   Packet* createAnonDatagram(uint8_t type, const LocalIdentity& sender, const Identity& dest, const uint8_t* secret, const uint8_t* data, size_t data_len);
   Packet* createGroupDatagram(uint8_t type, const GroupChannel& channel, const uint8_t* data, size_t data_len);
-  Packet* createAck(uint32_t ack_crc);
-  Packet* createMultiAck(uint32_t ack_crc, uint8_t remaining);
+  Packet* createAck(const uint8_t* ack, uint8_t len);
+  Packet* createAck(uint32_t ack_crc) { return createAck((uint8_t *) &ack_crc, 4); }
+  Packet* createMultiAck(const uint8_t* ack, uint8_t len, uint8_t remaining);
+  Packet* createMultiAck(uint32_t ack_crc, uint8_t remaining) { return createMultiAck((uint8_t *)&ack_crc, 4, remaining); }
   Packet* createPathReturn(const uint8_t* dest_hash, const uint8_t* secret, const uint8_t* path, uint8_t path_len, uint8_t extra_type, const uint8_t*extra, size_t extra_len);
   Packet* createPathReturn(const Identity& dest, const uint8_t* secret, const uint8_t* path, uint8_t path_len, uint8_t extra_type, const uint8_t*extra, size_t extra_len);
   Packet* createRawData(const uint8_t* data, size_t len);
@@ -230,12 +212,12 @@ public:
   void sendDirect(Packet* packet, const uint8_t* path, uint8_t path_len, uint32_t delay_millis=0);
 
   /**
-   * \brief  send a locally-generated Packet to just neigbor nodes (zero hops)
+   * \brief  send a locally-generated Packet to just neighbor nodes (zero hops)
   */
   void sendZeroHop(Packet* packet, uint32_t delay_millis=0);
 
   /**
-   * \brief  send a locally-generated Packet to just neigbor nodes (zero hops), with specific transort codes
+   * \brief  send a locally-generated Packet to just neighbor nodes (zero hops), with specific transport codes
    * \param transport_codes   array of 2 codes to attach to packet
   */
   void sendZeroHop(Packet* packet, uint16_t* transport_codes, uint32_t delay_millis=0);

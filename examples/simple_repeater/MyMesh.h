@@ -11,8 +11,8 @@
   #include <LittleFS.h>
 #elif defined(ESP32)
   #include <SPIFFS.h>
-#elif defined(ARCH_PORTDUINO)
-  #include <PortduinoFS.h>
+#elif defined(ARDULINUX_PLATFORM)
+  #include <ArduLinuxFS.h>
 #endif
 
 #ifdef WITH_RS232_BRIDGE
@@ -22,6 +22,11 @@
 
 #ifdef WITH_ESPNOW_BRIDGE
 #include "helpers/bridges/ESPNowBridge.h"
+#define WITH_BRIDGE
+#endif
+
+#ifdef WITH_MQTT_BRIDGE
+#include "helpers/bridges/MQTTBridge.h"
 #define WITH_BRIDGE
 #endif
 
@@ -71,11 +76,11 @@ struct NeighbourInfo {
 };
 
 #ifndef FIRMWARE_BUILD_DATE
-  #define FIRMWARE_BUILD_DATE   "6 Mar 2026"
+  #define FIRMWARE_BUILD_DATE   "6 Jun 2026"
 #endif
 
 #ifndef FIRMWARE_VERSION
-  #define FIRMWARE_VERSION   "v1.14.0"
+  #define FIRMWARE_VERSION   "v1.16.0"
 #endif
 
 #define FIRMWARE_ROLE "repeater"
@@ -99,6 +104,7 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks {
   RegionMap region_map, temp_map;
   RegionEntry* load_stack[8];
   RegionEntry* recv_pkt_region;
+  TransportKey default_scope;
   RateLimiter discover_limiter, anon_limiter;
   uint32_t pending_discover_tag;
   unsigned long pending_discover_until;
@@ -118,10 +124,11 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks {
   RS232Bridge bridge;
 #elif defined(WITH_ESPNOW_BRIDGE)
   ESPNowBridge bridge;
+#elif defined(WITH_MQTT_BRIDGE)
+  MQTTBridge bridge;
 #endif
 
   void putNeighbour(const mesh::Identity& id, uint32_t timestamp, float snr);
-  void sendNodeDiscoverReq();
   uint8_t handleLoginReq(const mesh::Identity& sender, const uint8_t* secret, uint32_t sender_timestamp, const uint8_t* data, bool is_flood);
   uint8_t handleAnonRegionsReq(const mesh::Identity& sender, uint32_t sender_timestamp, const uint8_t* data);
   uint8_t handleAnonOwnerReq(const mesh::Identity& sender, uint32_t sender_timestamp, const uint8_t* data);
@@ -175,11 +182,13 @@ protected:
   bool onPeerPathRecv(mesh::Packet* packet, int sender_idx, const uint8_t* secret, uint8_t* path, uint8_t path_len, uint8_t extra_type, uint8_t* extra, uint8_t extra_len) override;
   void onControlDataRecv(mesh::Packet* packet) override;
 
+  void sendFloodReply(mesh::Packet* packet, unsigned long delay_millis, uint8_t path_hash_size);
+
 public:
   MyMesh(mesh::MainBoard& board, mesh::Radio& radio, mesh::MillisecondClock& ms, mesh::RNG& rng, mesh::RTCClock& rtc, mesh::MeshTables& tables);
 
   void begin(FILESYSTEM* fs);
-
+  void sendNodeDiscoverReq();
   const char* getFirmwareVer() override { return FIRMWARE_VERSION; }
   const char* getBuildDate() override { return FIRMWARE_BUILD_DATE; }
   const char* getRole() override { return FIRMWARE_ROLE; }
@@ -192,6 +201,9 @@ public:
     _cli.savePrefs(_fs);
   }
 
+  void sendFloodScoped(const TransportKey& scope, mesh::Packet* pkt, uint32_t delay_millis, uint8_t path_hash_size);
+
+  // CommonCLICallbacks
   void applyTempRadioParams(float freq, float bw, uint8_t sf, uint8_t cr, int timeout_mins) override;
   bool formatFileSystem() override;
   void sendSelfAdvertisement(int delay_millis, bool flood) override;
@@ -211,16 +223,24 @@ public:
   void formatStatsReply(char *reply) override;
   void formatRadioStatsReply(char *reply) override;
   void formatPacketStatsReply(char *reply) override;
+  void startRegionsLoad() override;
+  bool saveRegions() override;
+  void onDefaultRegionChanged(const RegionEntry* r) override;
 
   mesh::LocalIdentity& getSelfId() override { return self_id; }
 
   void saveIdentity(const mesh::LocalIdentity& new_id) override;
   void clearStats() override;
+
   void handleCommand(uint32_t sender_timestamp, char* command, char* reply);
   void loop();
 
 #if defined(WITH_BRIDGE)
   void setBridgeState(bool enable) override {
+#if defined(WITH_MQTT_BRIDGE)
+    if (enable) bridge.startMQTT();
+    else        bridge.stopMQTT();
+#else
     if (enable == bridge.isRunning()) return;
     if (enable)
     {
@@ -230,13 +250,28 @@ public:
     {
       bridge.end();
     }
+#endif
   }
 
   void restartBridge() override {
+#if defined(WITH_MQTT_BRIDGE)
+    bridge.stopMQTT();
+    bridge.startMQTT();
+#else
     if (!bridge.isRunning()) return;
     bridge.end();
     bridge.begin();
+#endif
   }
+
+#if defined(WITH_MQTT_BRIDGE)
+  void getBridgeStatus(char* buf) override {
+    bridge.getStatusStr(buf, 159);
+  }
+  const MQTTBridge::Stats& getMQTTStats() const {
+    return bridge.getStats();
+  }
+#endif
 #endif
 
   // To check if there is pending work
