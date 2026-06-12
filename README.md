@@ -1,4 +1,13 @@
-## MQTT is not working yet. I have to fix it.
+## Added MQTT support for linux repeater variant.
+
+for compilation with pio use variant linux_repeater_mqtt
+
+Added cli commands:
+set bridge.mqtt.server
+set bridge.mqtt.port
+set bridge.mqtt.topic
+set bridge.mqtt.user
+set bridge.mqtt.pass
 
 ## About MeshCore
 
