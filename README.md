@@ -11,9 +11,9 @@ set bridge.mqtt.port
 
 set bridge.mqtt.topic
 
-set bridge.mqtt.user
+set bridge.mqtt.user (Optional)
 
-set bridge.mqtt.pass
+set bridge.mqtt.pass (Optional)
 
 
 ## About MeshCore
