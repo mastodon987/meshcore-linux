@@ -1,6 +1,8 @@
 ## Added MQTT support for linux repeater variant.
 
-for compilation with pio use variant linux_repeater_mqtt
+for compilation with pio use variant linux_repeater_mqtt.
+
+Into MQTT are sent all listened Meshcore Frames with all frame headers and payload. For MQTT->Meshcore is required same format with all headers. In my another repo python-mc-client there is POC.
 
 
 ## Added CLI commands:
