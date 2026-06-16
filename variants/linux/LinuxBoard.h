@@ -31,6 +31,7 @@ public:
   bool rx_boosted_gain = true;
 
   char* spidev = "/dev/spidev0.0";
+  char* lora_gpiochip = "gpiochip0";
 
   float lora_tcxo = 1.8f;
 
@@ -38,7 +39,6 @@ public:
   char *admin_password = "password";
   float lat = 0.0f;
   float lon = 0.0f;
-  char *data_dir = "/var/lib/meshcore";
 
   int load(const char *filename);
 };
