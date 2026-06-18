@@ -7,6 +7,14 @@
 #include <errno.h>
 #include <RadioLib.h>
 
+// Default location of the meshcored config file, used when -c/--conf is
+// not passed on the command line.
+#define DEFAULT_MESHCORED_CONF "/etc/meshcored/meshcored.ini"
+
+// Path to the config file to load, set via -c/--conf (see ardulinuxCustomInit()
+// in LinuxBoard.cpp). Defaults to DEFAULT_MESHCORED_CONF.
+extern const char *meshcoredConfPath;
+
 class LinuxConfig {
 public:
   float lora_freq = LORA_FREQ;

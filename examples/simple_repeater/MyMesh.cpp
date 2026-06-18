@@ -947,6 +947,32 @@ void MyMesh::begin(FILESYSTEM *fs) {
 #endif
   // load persisted prefs
   _cli.loadPrefs(_fs);
+
+#if defined(WITH_MQTT_BRIDGE)
+  // Always load MQTT settings from meshcored.ini on every startup.
+  // The ini file is the canonical source of truth — saved com_prefs are
+  // never used for MQTT configuration.
+  if (board.config.mqtt_broker) {
+    strncpy(_prefs.mqtt_server, board.config.mqtt_broker, sizeof(_prefs.mqtt_server) - 1);
+  }
+  if (board.config.mqtt_port != 0) {
+    _prefs.mqtt_port = board.config.mqtt_port;
+  }
+  if (board.config.mqtt_topic) {
+    strncpy(_prefs.mqtt_topic, board.config.mqtt_topic, sizeof(_prefs.mqtt_topic) - 1);
+  }
+  if (board.config.mqtt_username) {
+    strncpy(_prefs.mqtt_user, board.config.mqtt_username, sizeof(_prefs.mqtt_user) - 1);
+  }
+  if (board.config.mqtt_password) {
+    strncpy(_prefs.mqtt_pass, board.config.mqtt_password, sizeof(_prefs.mqtt_pass) - 1);
+  }
+  // Always apply enabled flag from ini (absent in file == -1, leave as-is).
+  if (board.config.mqtt_enabled >= 0) {
+    _prefs.mqtt_autostart = (uint8_t)board.config.mqtt_enabled;
+  }
+#endif // WITH_MQTT_BRIDGE
+
   acl.load(_fs, self_id);
   // TODO: key_store.begin();
   region_map.load(_fs);

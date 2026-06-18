@@ -691,25 +691,25 @@ void MyMesh::begin(FILESYSTEM *fs) {
   // board.config was already populated by LinuxBoard::begin() -> config.load(...)
   // before MyMesh::begin() runs (board.begin() is called earlier in setup()).
 
-  if (_prefs.mqtt_server[0] == '\0' && board.config.mqtt_broker) {
+  // Always load MQTT settings from meshcored.ini on every startup.
+  // The ini file is the canonical source of truth — saved com_prefs are
+  // never used for MQTT configuration.
+  if (board.config.mqtt_broker) {
     strncpy(_prefs.mqtt_server, board.config.mqtt_broker, sizeof(_prefs.mqtt_server) - 1);
   }
-  if (_prefs.mqtt_port == 0 && board.config.mqtt_port != 0) {
+  if (board.config.mqtt_port != 0) {
     _prefs.mqtt_port = board.config.mqtt_port;
   }
-  if (_prefs.mqtt_topic[0] == '\0' && board.config.mqtt_topic) {
+  if (board.config.mqtt_topic) {
     strncpy(_prefs.mqtt_topic, board.config.mqtt_topic, sizeof(_prefs.mqtt_topic) - 1);
   }
-  if (_prefs.mqtt_user[0] == '\0' && board.config.mqtt_username) {
+  if (board.config.mqtt_username) {
     strncpy(_prefs.mqtt_user, board.config.mqtt_username, sizeof(_prefs.mqtt_user) - 1);
   }
-  if (_prefs.mqtt_pass[0] == '\0' && board.config.mqtt_password) {
+  if (board.config.mqtt_password) {
     strncpy(_prefs.mqtt_pass, board.config.mqtt_password, sizeof(_prefs.mqtt_pass) - 1);
   }
-  // mqtt_autostart: only apply the ini's "enabled" if the CLI/saved prefs
-  // haven't been touched. NodePrefs has no built-in "is this field unset"
-  // marker for a uint8_t flag, so the ini's mqtt_enabled (-1 = absent in
-  // file) is the deciding signal here, not _prefs.mqtt_autostart itself.
+  // Always apply enabled flag from ini (absent in file == -1, leave as-is).
   if (board.config.mqtt_enabled >= 0) {
     _prefs.mqtt_autostart = (uint8_t)board.config.mqtt_enabled;
   }

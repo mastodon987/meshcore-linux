@@ -3,6 +3,7 @@
 #include <string.h>
 #include <ctype.h>
 #include <exception>
+#include <argp.h>
 #ifdef ARDULINUX_HARDWARE
 #include "linux/gpio/LinuxGPIOPin.h"
 #endif
@@ -12,6 +13,38 @@
 const char *ardulinuxAppName        = "meshcored";
 const char *ardulinuxAppDescription = "a meshcore daemon for linux";
 const char *ardulinuxAppBugAddress  = "https://github.com/meshcore-dev/MeshCore";
+
+// Path to the config file, overridable via -c/--conf. Defined here (declared
+// extern in LinuxBoard.h) so LinuxBoard::begin() can load whichever file the
+// user requested instead of the previously hardcoded path.
+const char *meshcoredConfPath = DEFAULT_MESHCORED_CONF;
+
+// ── -c/--conf command-line option ───────────────────────────────────────
+// Registered with the ardulinux runtime's argp parser via
+// ardulinuxAddArguments() below, so it shows up alongside the built-in
+// --erase/--fsdir/--help/--usage/--version options in `meshcored --help`.
+static struct argp_option meshcored_options[] = {
+  {"conf", 'c', "FILE", 0, "Path to the meshcored config file (default: " DEFAULT_MESHCORED_CONF ")"},
+  {0}
+};
+
+static error_t meshcored_parse_opt(int key, char *arg, struct argp_state *state) {
+  switch (key) {
+  case 'c':
+    meshcoredConfPath = arg;
+    break;
+  default:
+    return ARGP_ERR_UNKNOWN;
+  }
+  return 0;
+}
+
+static struct argp meshcored_argp = {meshcored_options, meshcored_parse_opt, 0, 0};
+
+void ardulinuxCustomInit() {
+  struct argp_child child = {&meshcored_argp, 0, "", 0};
+  ardulinuxAddArguments(child, nullptr);
+}
 
 int initGPIOPin(uint8_t pinNum, const std::string gpioChipName, uint8_t line)
 {
@@ -54,7 +87,10 @@ void LinuxBoard::begin() {
   exit(1);
 #endif
 
-  config.load("/etc/meshcored/meshcored.ini");
+  printf("Loading config from %s\n", meshcoredConfPath);
+  if (config.load(meshcoredConfPath) != 0) {
+    printf("WARNING: could not open config file %s, using defaults\n", meshcoredConfPath);
+  }
 
   printf("SPI begin %s\n", config.spidev);
   SPI.begin(config.spidev, 2000000);
