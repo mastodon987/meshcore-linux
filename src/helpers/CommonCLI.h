@@ -4,8 +4,9 @@
 #include <helpers/IdentityStore.h>
 #include <helpers/SensorManager.h>
 #include <helpers/ClientACL.h>
+#include <helpers/RegionMap.h>
 
-#if defined(WITH_RS232_BRIDGE) || defined(WITH_ESPNOW_BRIDGE)
+#if defined(WITH_RS232_BRIDGE) || defined(WITH_ESPNOW_BRIDGE) || defined(WITH_MQTT_BRIDGE)
 #define WITH_BRIDGE
 #endif
 
@@ -39,6 +40,8 @@ struct NodePrefs { // persisted to file
   uint8_t multi_acks;
   float bw;
   uint8_t flood_max;
+  uint8_t flood_max_unscoped;
+  uint8_t flood_max_advert;
   uint8_t interference_threshold;
   uint8_t agc_reset_interval; // secs / 4
   // Bridge settings
@@ -60,6 +63,15 @@ struct NodePrefs { // persisted to file
   uint8_t rx_boosted_gain; // power settings
   uint8_t path_hash_mode;   // which path mode to use when sending
   uint8_t loop_detect;
+  // MQTT Bridge settings — runtime-configurable, appended after offset 293.
+  // Empty string means "use the compile-time WITH_MQTT_BRIDGE_* default".
+  char mqtt_server[128];    // MQTT broker hostname or IP (128 to fit long FQDNs)
+  uint16_t mqtt_port;       // MQTT port (0 = use compile-time default)
+  char mqtt_topic[33];      // MQTT topic (empty = use compile-time default)
+  char mqtt_user[33];       // MQTT username (empty = no auth)
+  char mqtt_pass[33];       // MQTT password
+  uint8_t mqtt_autostart;   // 1 = connect to broker on boot (default)
+  uint8_t mqtt_banned;      // 1 = self-banned, requires reconfiguration to rejoin
 };
 
 class CommonCLICallbacks {
@@ -88,12 +100,26 @@ public:
   virtual void clearStats() = 0;
   virtual void applyTempRadioParams(float freq, float bw, uint8_t sf, uint8_t cr, int timeout_mins) = 0;
 
+  virtual void startRegionsLoad() {
+    // no op by default
+  }
+  virtual bool saveRegions() {
+    return false;
+  }
+  virtual void onDefaultRegionChanged(const RegionEntry* r) {
+    // no op by default
+  }
+
   virtual void setBridgeState(bool enable) {
     // no op by default
   };
 
   virtual void restartBridge() {
     // no op by default
+  };
+
+  virtual void getBridgeStatus(char* buf) {
+    buf[0] = 0; // no op by default
   };
 
   virtual void setRxBoostedGain(bool enable) {
@@ -107,6 +133,7 @@ class CommonCLI {
   CommonCLICallbacks* _callbacks;
   mesh::MainBoard* _board;
   SensorManager* _sensors;
+  RegionMap* _region_map;
   ClientACL* _acl;
   char tmp[PRV_KEY_SIZE*2 + 4];
 
@@ -114,12 +141,16 @@ class CommonCLI {
   void savePrefs();
   void loadPrefsInt(FILESYSTEM* _fs, const char* filename);
 
+  void handleRegionCmd(char* command, char* reply);
+  void handleGetCmd(uint32_t sender_timestamp, char* command, char* reply);
+  void handleSetCmd(uint32_t sender_timestamp, char* command, char* reply);
+
 public:
-  CommonCLI(mesh::MainBoard& board, mesh::RTCClock& rtc, SensorManager& sensors, ClientACL& acl, NodePrefs* prefs, CommonCLICallbacks* callbacks)
-      : _board(&board), _rtc(&rtc), _sensors(&sensors), _acl(&acl), _prefs(prefs), _callbacks(callbacks) { }
+  CommonCLI(mesh::MainBoard& board, mesh::RTCClock& rtc, SensorManager& sensors, RegionMap& region_map, ClientACL& acl, NodePrefs* prefs, CommonCLICallbacks* callbacks)
+      : _board(&board), _rtc(&rtc), _sensors(&sensors), _region_map(&region_map), _acl(&acl), _prefs(prefs), _callbacks(callbacks) { }
 
   void loadPrefs(FILESYSTEM* _fs);
   void savePrefs(FILESYSTEM* _fs);
-  void handleCommand(uint32_t sender_timestamp, const char* command, char* reply);
+  void handleCommand(uint32_t sender_timestamp, char* command, char* reply);
   uint8_t buildAdvertData(uint8_t node_type, uint8_t* app_data);
 };

@@ -32,7 +32,7 @@
 #endif
 
 #if BRIDGE_DEBUG && ARDUINO
-#define BRIDGE_DEBUG_PRINTLN(F, ...) Serial.printf("%s BRIDGE: " F, getLogDateTime(), ##__VA_ARGS__)
+#define BRIDGE_DEBUG_PRINTLN(F, ...) Serial.printf("BRIDGE: " F "\n", ##__VA_ARGS__)
 #else
 #define BRIDGE_DEBUG_PRINTLN(...) {}
 #endif

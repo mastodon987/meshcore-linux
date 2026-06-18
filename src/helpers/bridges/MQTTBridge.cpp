@@ -238,12 +238,19 @@ static uint8_t getSourceHash(const mesh::Packet* pkt) {
  *   PAYLOAD_TYPE_ADVERT with path_len==0 — zero-hop local advertisements.
  *                        They are only relevant to direct RF neighbours and
  *                        must not propagate beyond the local segment.
+ *                        EXCEPTION: on a RADIO_NONE node (e.g.
+ *                        linux_room_mqtt_only) there is no RF segment at
+ *                        all — MQTT is the *only* path this node has to
+ *                        announce itself to the rest of the mesh, so its
+ *                        zero-hop self-advert must still be bridged.
  *   PAYLOAD_TYPE_TRACE — diagnostic traceroute packets, local only.
  */
 static bool shouldBridgePacket(const mesh::Packet* pkt) {
   uint8_t type = pkt->getPayloadType();
   if (type == PAYLOAD_TYPE_TRACE) return false;
+#if !defined(RADIO_NONE)
   if (pkt->path_len == 0 && type == PAYLOAD_TYPE_ADVERT) return false;
+#endif
   return true;
 }
 

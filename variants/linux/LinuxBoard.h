@@ -40,6 +40,16 @@ public:
   float lat = 0.0f;
   float lon = 0.0f;
 
+  // ── MQTT bridge settings (optional [mqtt] section) ───────────────────────
+  // mqtt_enabled tri-states: -1 = key absent from ini (don't touch the
+  // NodePrefs autostart flag at all), 0 = explicitly disabled, 1 = enabled.
+  int8_t mqtt_enabled = -1;
+  char* mqtt_broker = nullptr;     // "broker" key      -> NodePrefs.mqtt_server
+  uint16_t mqtt_port = 0;          // "port" key        -> NodePrefs.mqtt_port (0 = unset)
+  char* mqtt_topic = nullptr;      // "topic" key       -> NodePrefs.mqtt_topic
+  char* mqtt_username = nullptr;   // "username" key    -> NodePrefs.mqtt_user
+  char* mqtt_password = nullptr;   // "password" key    -> NodePrefs.mqtt_pass
+
   int load(const char *filename);
 };
 

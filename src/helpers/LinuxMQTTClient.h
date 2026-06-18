@@ -195,16 +195,23 @@ public:
     unsigned long now = nowMs();
     if (_keepalive > 0 && (now - _last_activity) > (unsigned long)(_keepalive * 1000UL / 2)) {
       uint8_t ping[2] = { 0xC0, 0x00 };
-      if (!writeAll(ping, 2)) { closeSocket(); return false; }
+      if (!writeAll(ping, 2)) {
+        BRIDGE_DEBUG_PRINTLN("MQTT: PINGREQ write failed (errno=%d), closing\n", errno);
+        closeSocket(); return false;
+      }
       _last_activity = now;
     }
 
     // Try to read one packet (non-blocking)
     uint8_t type_byte;
     ssize_t n = recv(_sock, &type_byte, 1, MSG_DONTWAIT);
-    if (n == 0) { closeSocket(); return false; } // peer closed
+    if (n == 0) {
+      BRIDGE_DEBUG_PRINTLN("MQTT: peer closed connection (recv returned 0)\n");
+      closeSocket(); return false;
+    } // peer closed
     if (n < 0) {
       if (errno == EAGAIN || errno == EWOULDBLOCK) return true; // nothing to read
+      BRIDGE_DEBUG_PRINTLN("MQTT: recv() error, errno=%d (%s)\n", errno, strerror(errno));
       closeSocket();
       return false;
     }
@@ -215,7 +222,10 @@ public:
     uint32_t multiplier = 1;
     uint8_t enc_byte;
     do {
-      if (!readExact(&enc_byte, 1, 2000)) { closeSocket(); return false; }
+      if (!readExact(&enc_byte, 1, 2000)) {
+        BRIDGE_DEBUG_PRINTLN("MQTT: timeout reading remaining-length byte\n");
+        closeSocket(); return false;
+      }
       remaining += (enc_byte & 0x7F) * multiplier;
       multiplier *= 128;
     } while (enc_byte & 0x80);
@@ -226,7 +236,10 @@ public:
       uint32_t left = remaining;
       while (left > 0) {
         uint32_t chunk = left > sizeof(discard) ? sizeof(discard) : left;
-        if (!readExact(discard, chunk, 2000)) { closeSocket(); return false; }
+        if (!readExact(discard, chunk, 2000)) {
+          BRIDGE_DEBUG_PRINTLN("MQTT: timeout draining oversized packet\n");
+          closeSocket(); return false;
+        }
         left -= chunk;
       }
       _last_activity = now;
@@ -234,7 +247,10 @@ public:
     }
 
     if (remaining > 0) {
-      if (!readExact(_rx_buf, remaining, 2000)) { closeSocket(); return false; }
+      if (!readExact(_rx_buf, remaining, 2000)) {
+        BRIDGE_DEBUG_PRINTLN("MQTT: timeout reading packet body (remaining=%u)\n", (unsigned)remaining);
+        closeSocket(); return false;
+      }
     }
     _last_activity = now;
 

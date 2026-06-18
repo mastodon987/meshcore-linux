@@ -117,6 +117,8 @@ int LinuxConfig::load(const char *filename) {
   FILE *f = fopen(filename, "r");
   if (!f) return -1;
 
+  char section[32] = "";   // current [section] name, "" = top-level/default
+
   char line[512];
   while (fgets(line, sizeof(line), f)) {
     char *p = line;
@@ -124,6 +126,18 @@ int LinuxConfig::load(const char *filename) {
     while (isspace(*p)) p++;
     // skip empty lines and comments
     if (*p == '\0' || *p == '#' || *p == ';') continue;
+
+    // section header, e.g. "[mqtt]"
+    if (*p == '[') {
+      char *end = strchr(p, ']');
+      if (end) {
+        *end = '\0';
+        strncpy(section, p + 1, sizeof(section) - 1);
+        section[sizeof(section) - 1] = '\0';
+        trim(section);
+      }
+      continue;
+    }
 
     char *key = p;
     while (*p && !isspace(*p) && *p != '=') p++;
@@ -148,6 +162,24 @@ int LinuxConfig::load(const char *filename) {
       }
     }
 
+    if (strcmp(section, "mqtt") == 0) {
+      // ── [mqtt] section ───────────────────────────────────────────────────
+      if (strcmp(key, "enabled") == 0) {
+        mqtt_enabled = (strcmp(value, "true") == 0 || strcmp(value, "1") == 0) ? 1 : 0;
+      }
+      else if (strcmp(key, "broker") == 0)   mqtt_broker = safe_copy(value, 128);
+      else if (strcmp(key, "port") == 0)     mqtt_port = (uint16_t)atoi(value);
+      else if (strcmp(key, "topic") == 0)    mqtt_topic = safe_copy(value, 33);
+      else if (strcmp(key, "username") == 0) mqtt_username = safe_copy(value, 33);
+      else if (strcmp(key, "password") == 0) mqtt_password = safe_copy(value, 33);
+      // client_id, outbound_queue_size, inbound_queue_size,
+      // message_ttl_seconds, use_tls, tls_ca_file, keepalive_seconds,
+      // clean_session: not yet implemented by MQTTBridge — parsed but ignored
+      // for now, rather than silently doing nothing without acknowledgement.
+      continue;
+    }
+
+    // ── top-level (default section) keys, unchanged ──────────────────────
     if (strcmp(key, "spidev") == 0)         spidev = safe_copy(value, 32);
     else if (strcmp(key, "lora_gpiochip") == 0) lora_gpiochip = safe_copy(value, 32);
     else if (strcmp(key, "lora_freq") == 0) lora_freq = atof(value);
