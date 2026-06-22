@@ -7,7 +7,7 @@
 #if !defined(RADIO_NONE)
   #include <helpers/radiolib/CustomSX1276Wrapper.h>
 #endif
-#include <helpers/sensors/EnvironmentSensorManager.h>
+#include "LinuxSensorManager.h"
 #ifdef DISPLAY_CLASS
   #include <helpers/ui/SSD1306Display.h>
   #include <helpers/ui/MomentaryButton.h>
@@ -23,7 +23,7 @@
 
 extern LinuxBoard board;
 extern LinuxRTCClock rtc_clock;
-extern EnvironmentSensorManager sensors;
+extern LinuxSensorManager sensors;
 
 #if defined(RADIO_NONE)
   extern NullRadio radio_driver;

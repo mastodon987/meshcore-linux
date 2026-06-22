@@ -198,6 +198,12 @@ int LinuxConfig::load(const char *filename) {
       }
     }
 
+    if (strcmp(section, "sensors") == 0) {
+      // ── [sensors] section ────────────────────────────────────────────────
+      if (strcmp(key, "ds18b20_id") == 0) ds18b20_id = safe_copy(value, 32);
+      continue;
+    }
+
     if (strcmp(section, "mqtt") == 0) {
       // ── [mqtt] section ───────────────────────────────────────────────────
       if (strcmp(key, "enabled") == 0) {

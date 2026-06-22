@@ -1,3 +1,11 @@
+## Added DS18B20 sensor into Telemetry for linux repeater variant.
+
+## Added GPS support for linux variant.
+
+Tested with ATGM336H. running user (meshcore) has to be in dialout group for have permission to read from GPS device.
+NMEA format is supported only (no UBX). 
+Meshcore instance cannot run concurrently with running gpsd which reads from gps device too.
+
 ## Added MQTT support for linux repeater variant.
 
 for compilation with pio use variant linux_repeater_mqtt.

@@ -15,6 +15,23 @@
 // in LinuxBoard.cpp). Defaults to DEFAULT_MESHCORED_CONF.
 extern const char *meshcoredConfPath;
 
+// ── GPS serial device (optional) ──────────────────────────────────────────
+// Set per-build in variants/linux/platformio.ini, e.g.:
+//   -D ENV_INCLUDE_GPS=1
+//   -D GPS_SERIAL_DEVICE='"/dev/serial0"'
+//   -D GPS_BAUD_RATE=9600
+// Left empty ("") by default -- meaning "no GPS attached" -- so boards/users
+// who don't define it get exactly the previous no-GPS behaviour. Whether or
+// not GPS_SERIAL_DEVICE is set, ENV_INCLUDE_GPS=1 should also be defined so
+// the shared `gps on`/`gps off`/`gps sync` CLI commands (CommonCLI.cpp) and
+// the persisted gps_enabled NodePref (applyGpsPrefs()) are compiled in.
+#ifndef GPS_SERIAL_DEVICE
+#define GPS_SERIAL_DEVICE ""
+#endif
+#ifndef GPS_BAUD_RATE
+#define GPS_BAUD_RATE 9600
+#endif
+
 class LinuxConfig {
 public:
   float lora_freq = LORA_FREQ;
@@ -57,6 +74,12 @@ public:
   char* mqtt_topic = nullptr;      // "topic" key       -> NodePrefs.mqtt_topic
   char* mqtt_username = nullptr;   // "username" key    -> NodePrefs.mqtt_user
   char* mqtt_password = nullptr;   // "password" key    -> NodePrefs.mqtt_pass
+
+  // ── [sensors] section ──────────────────────────────────────────────────
+  // ds18b20_id: the w1 slave address (e.g. "28-00000099921a") of a DS18B20
+  // temperature sensor on the Pi's 1-Wire bus. Read from
+  // /sys/devices/w1_bus_master1/<id>/temperature. nullptr = no DS18B20.
+  char* ds18b20_id = nullptr;
 
   int load(const char *filename);
 };

@@ -4,7 +4,7 @@
 
 LinuxBoard board;
 LinuxRTCClock rtc_clock;
-EnvironmentSensorManager sensors;
+LinuxSensorManager sensors;
 
 #ifdef DISPLAY_CLASS
   DISPLAY_CLASS display;
