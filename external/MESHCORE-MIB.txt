@@ -1,0 +1,898 @@
+MESHCORE-MIB DEFINITIONS ::= BEGIN
+
+--
+-- MeshCore repeater/room-server monitoring MIB
+--
+-- OID base arc: 1.3.6.1.4.1.62911.1
+--   iso(1).org(3).dod(6).internet(1).private(4).enterprises(1).62911.1
+--
+-- Install:
+--   sudo cp MESHCORE-MIB.txt /usr/share/snmp/mibs/MESHCORE-MIB.txt
+--   echo "mibs +MESHCORE-MIB" >> /etc/snmp/snmp.conf
+--
+-- Usage:
+--   snmpwalk    -v2c -c public -m MESHCORE-MIB <host> meshCoreMIB
+--   snmpget     -v2c -c public -m MESHCORE-MIB <host> meshCoreNodeName.0
+--   snmpbulkwalk -v2c -c public -m MESHCORE-MIB <host> meshCoreMIB
+--
+-- SNMPSET:
+--   Groups 1-4 are READ-ONLY (monitoring stats).
+--   Groups 5-7 are READ-WRITE (control tree, aclTable, regionTable) --
+--   requires SNMP_RW_COMMUNITY if defined, otherwise SNMP_COMMUNITY.
+--   Group 5.5 (actions) triggers are WRITE-ONLY; GET always returns 0.
+--   SET base.5.5.1.0 = 1 -> reboot
+--   SET base.5.5.2.0 = 1 -> clkreboot
+--   SET base.5.5.3.0 = 1 -> FACTORY ERASE (destructive, irreversible)
+--   SET base.5.5.4.0 = 1 -> flood advert, = 2 -> zero-hop advert
+--   SET base.5.5.5.0 = 1 -> clear stats
+--
+
+IMPORTS
+    MODULE-IDENTITY, OBJECT-TYPE,
+    Integer32, Gauge32, Counter32, TimeTicks,
+    enterprises
+        FROM SNMPv2-SMI
+    DisplayString
+        FROM SNMPv2-TC
+    MODULE-COMPLIANCE, OBJECT-GROUP
+        FROM SNMPv2-CONF;
+
+
+meshCoreMIB MODULE-IDENTITY
+    LAST-UPDATED "202506060000Z"
+    ORGANIZATION "MeshCore Project"
+    CONTACT-INFO "https://github.com/ripplebiz/MeshCore"
+    DESCRIPTION
+        "MeshCore LoRa mesh node MIB.
+         Read-only stats (groups 1-4) plus read/write control tree
+         (groups 5-7: scalars, aclTable, regionTable).
+         All scalar leaves are base.<group>.<leaf>.0 (MIB-2-style scalars).
+         Table entries: base.<group>.1.<column>.<index>.
+         DECIMAL VALUES: fractional fields (freq, BW, SNR, duty-cycle,
+         lat/lon, delay factors, ADC multiplier) are OCTET STRING holding
+         plain ASCII decimal, e.g. '869.525' or '4.25'. Only genuinely
+         integer values use INTEGER/Counter32/Gauge32/TimeTicks."
+    REVISION "202506060000Z"
+        DESCRIPTION "Initial version."
+    ::= { enterprises 62911 1 }
+
+
+-- ============================================================
+-- TOP-LEVEL GROUPS
+-- ============================================================
+
+meshCoreSysInfo     OBJECT IDENTIFIER ::= { meshCoreMIB 1 }
+meshCoreRadio       OBJECT IDENTIFIER ::= { meshCoreMIB 2 }
+meshCorePackets     OBJECT IDENTIFIER ::= { meshCoreMIB 3 }
+meshCoreBridge      OBJECT IDENTIFIER ::= { meshCoreMIB 4 }
+meshCoreControl     OBJECT IDENTIFIER ::= { meshCoreMIB 5 }
+meshCoreAclTable    OBJECT IDENTIFIER ::= { meshCoreMIB 6 }
+meshCoreRegionTable OBJECT IDENTIFIER ::= { meshCoreMIB 7 }
+
+-- Control sub-groups under base.5
+meshCoreCtrlRadioHw  OBJECT IDENTIFIER ::= { meshCoreControl 1 }
+meshCoreCtrlRouting  OBJECT IDENTIFIER ::= { meshCoreControl 2 }
+meshCoreCtrlSystem   OBJECT IDENTIFIER ::= { meshCoreControl 3 }
+meshCoreCtrlBridge   OBJECT IDENTIFIER ::= { meshCoreControl 4 }
+meshCoreCtrlActions  OBJECT IDENTIFIER ::= { meshCoreControl 5 }
+
+
+-- ============================================================
+-- 1  sysInfo  (1.3.6.1.4.1.62911.1.1.x.0)  READ-ONLY
+-- ============================================================
+
+meshCoreNodeName OBJECT-TYPE
+    SYNTAX      DisplayString (SIZE (0..31))
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION
+        "Human-readable node name (CLI: set name <value>).
+         Example: 'Msk0'
+         SNMPSET: not supported on this object (use base.5.3.1.0)."
+    ::= { meshCoreSysInfo 1 }
+
+meshCoreRole OBJECT-TYPE
+    SYNTAX      DisplayString (SIZE (0..31))
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION
+        "Firmware role compiled into this binary.
+         Known values: 'repeater', 'room_server'."
+    ::= { meshCoreSysInfo 2 }
+
+meshCoreFirmwareVersion OBJECT-TYPE
+    SYNTAX      DisplayString (SIZE (0..31))
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION
+        "Firmware version string, e.g. 'v1.16.0'."
+    ::= { meshCoreSysInfo 3 }
+
+meshCorePublicKeyHex OBJECT-TYPE
+    SYNTAX      DisplayString (SIZE (0..128))
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION
+        "Node identity public key as upper-case hex (64 chars = 32 bytes).
+         Stable across reboots; uniquely identifies the node on the mesh.
+         Example: '1B6D76FAC327F46D65A0CF00AEAA32CD764FDF1281E5B7F76BA27A525E7DB95C'."
+    ::= { meshCoreSysInfo 4 }
+
+meshCoreUptime OBJECT-TYPE
+    SYNTAX      TimeTicks
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION
+        "Time since boot in hundredths of a second (standard TimeTicks).
+         Derived from firmware uptime_millis / 10. Wraps after ~497 days.
+         Example: (7690) = 76.90 seconds uptime."
+    ::= { meshCoreSysInfo 5 }
+
+meshCoreBattMilliVolts OBJECT-TYPE
+    SYNTAX      Gauge32
+    UNITS       "millivolts"
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION
+        "Battery voltage in millivolts from board ADC.
+         0 on hosts without battery monitoring hardware.
+         Example: 3742 = 3.742 V."
+    ::= { meshCoreSysInfo 6 }
+
+
+-- ============================================================
+-- 2  radioStats  (1.3.6.1.4.1.62911.1.2.x.0)  READ-ONLY
+-- ============================================================
+
+meshCoreTotalAirTimeMs OBJECT-TYPE
+    SYNTAX      Counter32
+    UNITS       "milliseconds"
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION
+        "Cumulative radio TX air time since boot (Dispatcher::getTotalAirTime()).
+         Drives duty-cycle enforcement. Wraps at 2^32 ms (~49.7 days continuous TX)."
+    ::= { meshCoreRadio 1 }
+
+meshCoreRxAirTimeMs OBJECT-TYPE
+    SYNTAX      Counter32
+    UNITS       "milliseconds"
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION
+        "Cumulative radio RX air time since boot (Dispatcher::getReceiveAirTime())."
+    ::= { meshCoreRadio 2 }
+
+meshCoreRemainingTxBudgetMs OBJECT-TYPE
+    SYNTAX      Gauge32
+    UNITS       "milliseconds"
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION
+        "Remaining TX budget now (Dispatcher::getRemainingTxBudget()).
+         0 = node is deferring all TX until budget replenishes.
+         High value (e.g. 1799670) means ample budget."
+    ::= { meshCoreRadio 3 }
+
+meshCoreNoiseFloor OBJECT-TYPE
+    SYNTAX      Integer32
+    UNITS       "dBm"
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION
+        "Current noise floor from LoRa transceiver, in dBm.
+         Less negative = more interference. Example: -104 dBm."
+    ::= { meshCoreRadio 4 }
+
+meshCoreLastRSSI OBJECT-TYPE
+    SYNTAX      Integer32
+    UNITS       "dBm"
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION
+        "RSSI of the most recently received LoRa packet, in dBm.
+         Example: -103 dBm."
+    ::= { meshCoreRadio 5 }
+
+meshCoreLastSNR OBJECT-TYPE
+    SYNTAX      DisplayString (SIZE (0..12))
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION
+        "SNR of the most recently received LoRa packet, as decimal ASCII dB.
+         Unscaled. Negative values are normal for LoRa.
+         Example: '-1.25' means -1.25 dB SNR."
+    ::= { meshCoreRadio 6 }
+
+meshCoreDutyCyclePct OBJECT-TYPE
+    SYNTAX      DisplayString (SIZE (0..10))
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION
+        "Configured TX duty-cycle allowance as decimal ASCII percent.
+         Unscaled. Derived from: 1 / (1 + airtime_factor) * 100.
+         This is the configured ceiling, not live usage.
+         Example: '12.50' means 12.50%.
+         For live utilization see meshCoreAirtimeUtilPct."
+    ::= { meshCoreRadio 7 }
+
+meshCoreAirtimeUtilPct OBJECT-TYPE
+    SYNTAX      DisplayString (SIZE (0..10))
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION
+        "Live airtime utilization as decimal ASCII percent (0.00-100.00).
+         Self-measuring: (airtime consumed since last read of this OID) /
+         (wall-clock elapsed since last read) * 100.
+         Polling interval = averaging window -- poll every 60 s for a
+         60-second average.
+         First read after boot returns '0.00' (no prior sample).
+         Example: '3.72' means 3.72% utilization."
+    ::= { meshCoreRadio 8 }
+
+
+-- ============================================================
+-- 3  packetStats  (1.3.6.1.4.1.62911.1.3.x.0)  READ-ONLY
+-- ============================================================
+
+meshCoreNumSentFlood OBJECT-TYPE
+    SYNTAX      Counter32
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Flood (broadcast) packets transmitted since boot (Dispatcher::getNumSentFlood())."
+    ::= { meshCorePackets 1 }
+
+meshCoreNumSentDirect OBJECT-TYPE
+    SYNTAX      Counter32
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Direct (unicast/routed) packets transmitted since boot (Dispatcher::getNumSentDirect())."
+    ::= { meshCorePackets 2 }
+
+meshCoreNumRecvFlood OBJECT-TYPE
+    SYNTAX      Counter32
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Flood packets received and accepted after duplicate filtering (Dispatcher::getNumRecvFlood())."
+    ::= { meshCorePackets 3 }
+
+meshCoreNumRecvDirect OBJECT-TYPE
+    SYNTAX      Counter32
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Direct packets received and accepted since boot (Dispatcher::getNumRecvDirect())."
+    ::= { meshCorePackets 4 }
+
+meshCoreRadioPacketsRecv OBJECT-TYPE
+    SYNTAX      Counter32
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION
+        "Raw packets received by radio driver before mesh-layer filtering
+         (radio_driver.getPacketsRecv()). Includes duplicates, foreign-network
+         packets, and decode failures counted in meshCoreRadioPacketsRecvErrors."
+    ::= { meshCorePackets 5 }
+
+meshCoreRadioPacketsSent OBJECT-TYPE
+    SYNTAX      Counter32
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Raw packets handed to radio driver for TX since boot (radio_driver.getPacketsSent())."
+    ::= { meshCorePackets 6 }
+
+meshCoreRadioPacketsRecvErrors OBJECT-TYPE
+    SYNTAX      Counter32
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION
+        "RX errors from radio driver since boot: CRC failures, header errors, etc.
+         (radio_driver.getPacketsRecvErrors()).
+         Persistently rising = RF interference or misconfigured channel."
+    ::= { meshCorePackets 7 }
+
+meshCoreOutboundQueueLen OBJECT-TYPE
+    SYNTAX      Gauge32
+    UNITS       "packets"
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION
+        "Current outbound TX queue depth (_mgr->getOutboundTotal()).
+         Should be near 0 normally. Non-zero = congestion or duty-cycle limiting."
+    ::= { meshCorePackets 8 }
+
+meshCoreErrFlags OBJECT-TYPE
+    SYNTAX      Gauge32
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION
+        "Bitmask of internal error flags (_err_flags in Dispatcher).
+         0 = no errors. Non-zero: correlate with src/Dispatcher.h for the
+         firmware version running; bit assignments may change between releases."
+    ::= { meshCorePackets 9 }
+
+
+-- ============================================================
+-- 4  bridgeStats  (1.3.6.1.4.1.62911.1.4.x.0)  READ-ONLY
+--    Always present. Returns 0 when no bridge compiled in.
+-- ============================================================
+
+meshCoreBridgeTxPackets OBJECT-TYPE
+    SYNTAX      Counter32
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Packets forwarded mesh->bridge (e.g. published to MQTT) since boot. 0 if no bridge."
+    ::= { meshCoreBridge 1 }
+
+meshCoreBridgeRxPackets OBJECT-TYPE
+    SYNTAX      Counter32
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Packets received from bridge and injected into mesh since boot. 0 if no bridge."
+    ::= { meshCoreBridge 2 }
+
+meshCoreBridgeReconnects OBJECT-TYPE
+    SYNTAX      Counter32
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION
+        "Bridge transport reconnections since boot (e.g. MQTT TCP reconnects).
+         Rapidly rising = unstable broker connection. 0 if no bridge."
+    ::= { meshCoreBridge 3 }
+
+
+-- ============================================================
+-- 5.1  control.radioHw  (1.3.6.1.4.1.62911.1.5.1.x.0)  READ-WRITE
+-- ============================================================
+
+meshCoreRhwFreqMHz OBJECT-TYPE
+    SYNTAX      DisplayString (SIZE (0..12))
+    MAX-ACCESS  read-write
+    STATUS      current
+    DESCRIPTION
+        "Radio frequency as decimal ASCII MHz. Unscaled.
+         Example: '869.525'. SET applies immediately (CLI: set freq <value>)."
+    ::= { meshCoreCtrlRadioHw 1 }
+
+meshCoreRhwBwKHz OBJECT-TYPE
+    SYNTAX      DisplayString (SIZE (0..12))
+    MAX-ACCESS  read-write
+    STATUS      current
+    DESCRIPTION
+        "Radio bandwidth as decimal ASCII kHz. Unscaled.
+         Example: '250.000'. SET applies immediately (CLI: set bw <value>)."
+    ::= { meshCoreCtrlRadioHw 2 }
+
+meshCoreRhwSF OBJECT-TYPE
+    SYNTAX      Integer32 (5..12)
+    MAX-ACCESS  read-write
+    STATUS      current
+    DESCRIPTION
+        "Spreading factor, integer 5-12.
+         SET applies immediately (CLI: set sf <value>)."
+    ::= { meshCoreCtrlRadioHw 3 }
+
+meshCoreRhwCR OBJECT-TYPE
+    SYNTAX      Integer32 (5..8)
+    MAX-ACCESS  read-write
+    STATUS      current
+    DESCRIPTION
+        "Coding rate, integer 5-8.
+         SET applies immediately (CLI: set cr <value>)."
+    ::= { meshCoreCtrlRadioHw 4 }
+
+meshCoreRhwTxPowerDbm OBJECT-TYPE
+    SYNTAX      Integer32 (1..22)
+    MAX-ACCESS  read-write
+    STATUS      current
+    DESCRIPTION
+        "TX power in dBm, integer 1-22.
+         SET applies immediately (CLI: set txpower <value>)."
+    ::= { meshCoreCtrlRadioHw 5 }
+
+meshCoreRhwRxBoostedGain OBJECT-TYPE
+    SYNTAX      Integer32 (0..1)
+    MAX-ACCESS  read-write
+    STATUS      current
+    DESCRIPTION
+        "RX boosted gain mode. 0 = off, 1 = on.
+         SET applies immediately (CLI: set rxboost <0|1>)."
+    ::= { meshCoreCtrlRadioHw 6 }
+
+
+-- ============================================================
+-- 5.2  control.routing  (1.3.6.1.4.1.62911.1.5.2.x.0)  READ-WRITE
+-- ============================================================
+
+meshCoreRtRepeatEnabled OBJECT-TYPE
+    SYNTAX      Integer32 (0..1)
+    MAX-ACCESS  read-write
+    STATUS      current
+    DESCRIPTION
+        "Packet repeating/forwarding enabled. 0 = off, 1 = on.
+         SET: CLI set repeat <0|1>."
+    ::= { meshCoreCtrlRouting 1 }
+
+meshCoreRtDutyCyclePct OBJECT-TYPE
+    SYNTAX      Integer32 (1..100)
+    MAX-ACCESS  read-write
+    STATUS      current
+    DESCRIPTION
+        "TX duty-cycle allowance ceiling, whole percent integer 1-100.
+         SET: CLI set dutycycle <value>.
+         Read-back of the live fractional value is at meshCoreDutyCyclePct (base.2.7.0)."
+    ::= { meshCoreCtrlRouting 2 }
+
+meshCoreRtTxDelayFactor OBJECT-TYPE
+    SYNTAX      DisplayString (SIZE (0..12))
+    MAX-ACCESS  read-write
+    STATUS      current
+    DESCRIPTION
+        "TX delay factor as decimal ASCII. Unscaled. Example: '1.50'.
+         SET: CLI set txdelay <value>."
+    ::= { meshCoreCtrlRouting 3 }
+
+meshCoreRtDirectTxDelay OBJECT-TYPE
+    SYNTAX      DisplayString (SIZE (0..12))
+    MAX-ACCESS  read-write
+    STATUS      current
+    DESCRIPTION
+        "Direct TX delay factor as decimal ASCII. Unscaled.
+         SET: CLI set directdelay <value>."
+    ::= { meshCoreCtrlRouting 4 }
+
+meshCoreRtRxDelayBase OBJECT-TYPE
+    SYNTAX      DisplayString (SIZE (0..12))
+    MAX-ACCESS  read-write
+    STATUS      current
+    DESCRIPTION
+        "RX delay base factor as decimal ASCII. Unscaled.
+         SET: CLI set rxdelay <value>."
+    ::= { meshCoreCtrlRouting 5 }
+
+meshCoreRtFloodMax OBJECT-TYPE
+    SYNTAX      Integer32 (0..64)
+    MAX-ACCESS  read-write
+    STATUS      current
+    DESCRIPTION
+        "Maximum flood hops, integer 0-64.
+         SET: CLI set flood.max <value>."
+    ::= { meshCoreCtrlRouting 6 }
+
+meshCoreRtFloodMaxUnscoped OBJECT-TYPE
+    SYNTAX      Integer32 (0..255)
+    MAX-ACCESS  read-write
+    STATUS      current
+    DESCRIPTION
+        "Maximum flood hops for unscoped packets, 0-64, or 255 = track flood.max.
+         SET: CLI set flood.max.unscoped <value>."
+    ::= { meshCoreCtrlRouting 7 }
+
+meshCoreRtFloodMaxAdvert OBJECT-TYPE
+    SYNTAX      Integer32 (0..64)
+    MAX-ACCESS  read-write
+    STATUS      current
+    DESCRIPTION
+        "Maximum flood hops for advertisement packets, 0-64.
+         SET: CLI set flood.max.advert <value>."
+    ::= { meshCoreCtrlRouting 8 }
+
+meshCoreRtPathHashMode OBJECT-TYPE
+    SYNTAX      Integer32 (0..2)
+    MAX-ACCESS  read-write
+    STATUS      current
+    DESCRIPTION
+        "Path hash mode, 0-2.
+         SET: CLI set path.hash <value>."
+    ::= { meshCoreCtrlRouting 9 }
+
+meshCoreRtLoopDetect OBJECT-TYPE
+    SYNTAX      Integer32 (0..3)
+    MAX-ACCESS  read-write
+    STATUS      current
+    DESCRIPTION
+        "Loop detection mode: 0=off, 1=minimal, 2=moderate, 3=strict.
+         SET: CLI set loopdetect <value>."
+    ::= { meshCoreCtrlRouting 10 }
+
+meshCoreRtInterferenceThresh OBJECT-TYPE
+    SYNTAX      Integer32
+    MAX-ACCESS  read-write
+    STATUS      current
+    DESCRIPTION
+        "Interference detection threshold (dBm).
+         SET: CLI set interference <value>."
+    ::= { meshCoreCtrlRouting 11 }
+
+meshCoreRtAgcResetIntervalS OBJECT-TYPE
+    SYNTAX      Integer32
+    UNITS       "seconds"
+    MAX-ACCESS  read-write
+    STATUS      current
+    DESCRIPTION
+        "AGC reset interval in seconds. Firmware rounds to a multiple of 4.
+         SET: CLI set agc.reset <value>."
+    ::= { meshCoreCtrlRouting 12 }
+
+meshCoreRtMultiAcks OBJECT-TYPE
+    SYNTAX      Integer32 (0..1)
+    MAX-ACCESS  read-write
+    STATUS      current
+    DESCRIPTION
+        "Multiple ACK transmission. 0 = off, 1 = on.
+         SET: CLI set multiack <0|1>."
+    ::= { meshCoreCtrlRouting 13 }
+
+meshCoreRtFloodAdvertHrs OBJECT-TYPE
+    SYNTAX      Integer32
+    UNITS       "hours"
+    MAX-ACCESS  read-write
+    STATUS      current
+    DESCRIPTION
+        "Flood advertisement interval in hours. 0 = disabled, or 3-168.
+         SET: CLI set advert.flood <value>."
+    ::= { meshCoreCtrlRouting 14 }
+
+meshCoreRtAdvertIntervalMins OBJECT-TYPE
+    SYNTAX      Integer32
+    UNITS       "minutes"
+    MAX-ACCESS  read-write
+    STATUS      current
+    DESCRIPTION
+        "Local advertisement interval in minutes. 0 = disabled, or 60-240.
+         Firmware rounds to a multiple of 2.
+         SET: CLI set advert.interval <value>."
+    ::= { meshCoreCtrlRouting 15 }
+
+
+-- ============================================================
+-- 5.3  control.system  (1.3.6.1.4.1.62911.1.5.3.x.0)  READ-WRITE
+-- ============================================================
+
+meshCoreSysNodeName OBJECT-TYPE
+    SYNTAX      DisplayString (SIZE (0..32))
+    MAX-ACCESS  read-write
+    STATUS      current
+    DESCRIPTION
+        "Node name (writable). SET: CLI set name <value>.
+         Read-only mirror at meshCoreNodeName (base.1.1.0)."
+    ::= { meshCoreCtrlSystem 1 }
+
+meshCoreSysLat OBJECT-TYPE
+    SYNTAX      DisplayString (SIZE (0..14))
+    MAX-ACCESS  read-write
+    STATUS      current
+    DESCRIPTION
+        "Latitude as decimal ASCII degrees, signed. Unscaled.
+         Example: '51.500000'. SET: CLI set lat <value>."
+    ::= { meshCoreCtrlSystem 2 }
+
+meshCoreSysLon OBJECT-TYPE
+    SYNTAX      DisplayString (SIZE (0..14))
+    MAX-ACCESS  read-write
+    STATUS      current
+    DESCRIPTION
+        "Longitude as decimal ASCII degrees, signed. Unscaled.
+         Example: '-0.125000'. SET: CLI set lon <value>."
+    ::= { meshCoreCtrlSystem 3 }
+
+meshCoreSysOwnerInfo OBJECT-TYPE
+    SYNTAX      DisplayString (SIZE (0..160))
+    MAX-ACCESS  read-write
+    STATUS      current
+    DESCRIPTION
+        "Owner/contact info string. Use '|' for newline (same as CLI convention).
+         SET: CLI set owner <value>."
+    ::= { meshCoreCtrlSystem 4 }
+
+meshCoreSysGuestPassword OBJECT-TYPE
+    SYNTAX      DisplayString (SIZE (0..64))
+    MAX-ACCESS  read-write
+    STATUS      current
+    DESCRIPTION
+        "Guest password. GET returns 'set' if a password is configured, '' if not
+         (never returns the real value). SET writes a new password.
+         CLI: set pass <value>."
+    ::= { meshCoreCtrlSystem 5 }
+
+meshCoreSysAdminPassword OBJECT-TYPE
+    SYNTAX      DisplayString (SIZE (0..64))
+    MAX-ACCESS  read-write
+    STATUS      current
+    DESCRIPTION
+        "Admin password. GET returns 'set' if configured, '' if not
+         (never returns the real value). SET writes a new password.
+         CLI: set adminpass <value>."
+    ::= { meshCoreCtrlSystem 6 }
+
+meshCoreSysAllowReadOnly OBJECT-TYPE
+    SYNTAX      Integer32 (0..1)
+    MAX-ACCESS  read-write
+    STATUS      current
+    DESCRIPTION
+        "Allow read-only (unauthenticated) client access. 0 = off, 1 = on.
+         room_server role only; harmless no-op on repeater.
+         SET: CLI set allow.readonly <0|1>."
+    ::= { meshCoreCtrlSystem 7 }
+
+meshCoreSysAdcMultiplier OBJECT-TYPE
+    SYNTAX      DisplayString (SIZE (0..12))
+    MAX-ACCESS  read-write
+    STATUS      current
+    DESCRIPTION
+        "ADC voltage multiplier as decimal ASCII. Unscaled.
+         '0' = use board default. Example: '1.702'.
+         SET: CLI set adc.mult <value>."
+    ::= { meshCoreCtrlSystem 8 }
+
+meshCoreSysPowerSaving OBJECT-TYPE
+    SYNTAX      Integer32 (0..1)
+    MAX-ACCESS  read-write
+    STATUS      current
+    DESCRIPTION
+        "Power saving mode. 0 = off, 1 = on. Reserved; effect is firmware-version dependent.
+         SET: CLI set powersave <0|1>."
+    ::= { meshCoreCtrlSystem 9 }
+
+
+-- ============================================================
+-- 5.4  control.bridgeCfg  (1.3.6.1.4.1.62911.1.5.4.x.0)  READ-WRITE
+-- ============================================================
+
+meshCoreBrEnabled OBJECT-TYPE
+    SYNTAX      Integer32 (0..1)
+    MAX-ACCESS  read-write
+    STATUS      current
+    DESCRIPTION
+        "Bridge enabled. 0 = off, 1 = on.
+         SET: CLI set bridge.enabled <0|1>."
+    ::= { meshCoreCtrlBridge 1 }
+
+meshCoreBrDelayMs OBJECT-TYPE
+    SYNTAX      Integer32 (0..10000)
+    UNITS       "milliseconds"
+    MAX-ACCESS  read-write
+    STATUS      current
+    DESCRIPTION
+        "Bridge forwarding delay in milliseconds, 0-10000.
+         SET: CLI set bridge.delay <value>."
+    ::= { meshCoreCtrlBridge 2 }
+
+meshCoreBrSource OBJECT-TYPE
+    SYNTAX      Integer32 (0..1)
+    MAX-ACCESS  read-write
+    STATUS      current
+    DESCRIPTION
+        "Bridge packet source. 0 = logTx, 1 = logRx.
+         SET: CLI set bridge.source <0|1>."
+    ::= { meshCoreCtrlBridge 3 }
+
+meshCoreBrMqttServer OBJECT-TYPE
+    SYNTAX      DisplayString (SIZE (0..128))
+    MAX-ACCESS  read-write
+    STATUS      current
+    DESCRIPTION
+        "MQTT broker hostname or IP.
+         SET: CLI set bridge.mqtt.server <value>."
+    ::= { meshCoreCtrlBridge 4 }
+
+meshCoreBrMqttPort OBJECT-TYPE
+    SYNTAX      Integer32 (0..65535)
+    MAX-ACCESS  read-write
+    STATUS      current
+    DESCRIPTION
+        "MQTT broker port. 0 = compile-time default (1883).
+         SET: CLI set bridge.mqtt.port <value>."
+    ::= { meshCoreCtrlBridge 5 }
+
+meshCoreBrMqttTopic OBJECT-TYPE
+    SYNTAX      DisplayString (SIZE (0..128))
+    MAX-ACCESS  read-write
+    STATUS      current
+    DESCRIPTION
+        "MQTT topic string.
+         SET: CLI set bridge.mqtt.topic <value>."
+    ::= { meshCoreCtrlBridge 6 }
+
+meshCoreBrMqttUser OBJECT-TYPE
+    SYNTAX      DisplayString (SIZE (0..64))
+    MAX-ACCESS  read-write
+    STATUS      current
+    DESCRIPTION
+        "MQTT username.
+         SET: CLI set bridge.mqtt.user <value>."
+    ::= { meshCoreCtrlBridge 7 }
+
+meshCoreBrMqttPass OBJECT-TYPE
+    SYNTAX      DisplayString (SIZE (0..64))
+    MAX-ACCESS  read-write
+    STATUS      current
+    DESCRIPTION
+        "MQTT password. GET returns 'set' if configured, '' if not
+         (never returns the real value). SET writes a new password.
+         CLI: set bridge.mqtt.pass <value>."
+    ::= { meshCoreCtrlBridge 8 }
+
+meshCoreBrMqttAutostart OBJECT-TYPE
+    SYNTAX      Integer32 (0..1)
+    MAX-ACCESS  read-write
+    STATUS      current
+    DESCRIPTION
+        "MQTT autostart on boot. 0 = off, 1 = on.
+         SET: CLI set bridge.autostart <0|1>."
+    ::= { meshCoreCtrlBridge 9 }
+
+
+-- ============================================================
+-- 5.5  control.actions  (1.3.6.1.4.1.62911.1.5.5.x.0)
+--      WRITE-ONLY triggers. GET always returns 0.
+--      Requires SNMP_RW_COMMUNITY.
+-- ============================================================
+
+meshCoreActReboot OBJECT-TYPE
+    SYNTAX      Integer32
+    MAX-ACCESS  read-write
+    STATUS      current
+    DESCRIPTION
+        "Reboot trigger. SET 1 -> reboot (CLI: reboot).
+         Response PDU is sent before rebooting but may not arrive.
+         GET always returns 0."
+    ::= { meshCoreCtrlActions 1 }
+
+meshCoreActClkReboot OBJECT-TYPE
+    SYNTAX      Integer32
+    MAX-ACCESS  read-write
+    STATUS      current
+    DESCRIPTION
+        "Clock reboot trigger. SET 1 -> clkreboot (CLI: clkreboot).
+         GET always returns 0."
+    ::= { meshCoreCtrlActions 2 }
+
+meshCoreActErase OBJECT-TYPE
+    SYNTAX      Integer32
+    MAX-ACCESS  read-write
+    STATUS      current
+    DESCRIPTION
+        "Factory erase trigger. SET 1 -> factory erase.
+         DESTRUCTIVE AND IRREVERSIBLE -- erases all config and identity.
+         GET always returns 0."
+    ::= { meshCoreCtrlActions 3 }
+
+meshCoreActSendAdvert OBJECT-TYPE
+    SYNTAX      Integer32
+    MAX-ACCESS  read-write
+    STATUS      current
+    DESCRIPTION
+        "Advertisement trigger. SET 1 -> send flood advert.
+         SET 2 -> send zero-hop (local) advert. GET always returns 0."
+    ::= { meshCoreCtrlActions 4 }
+
+meshCoreActClearStats OBJECT-TYPE
+    SYNTAX      Integer32
+    MAX-ACCESS  read-write
+    STATUS      current
+    DESCRIPTION
+        "Stats clear trigger. SET 1 -> clear all stats counters (CLI: clear stats).
+         GET always returns 0."
+    ::= { meshCoreCtrlActions 5 }
+
+
+-- ============================================================
+-- 6  aclTable  (1.3.6.1.4.1.62911.1.6.1.<col>.<index>)
+--    index = 1..getAclCount()  (1-based, matches ClientACL row order)
+--    Columns: 2=pubKeyHex(ro), 3=permissions(rw), 4=lastActivity(ro)
+-- ============================================================
+
+meshCoreAclEntry OBJECT IDENTIFIER ::= { meshCoreAclTable 1 }
+
+meshCoreAclPubKeyHex OBJECT-TYPE
+    SYNTAX      DisplayString (SIZE (0..128))
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION
+        "ACL entry public key as upper-case hex (64 chars = 32 bytes).
+         OID: base.6.1.2.<index>.
+         Read-only."
+    ::= { meshCoreAclEntry 2 }
+
+meshCoreAclPermissions OBJECT-TYPE
+    SYNTAX      Integer32 (0..3)
+    MAX-ACCESS  read-write
+    STATUS      current
+    DESCRIPTION
+        "ACL permissions bitmask for this entry (0-3).
+         Bit 0 (1) = read access. Bit 1 (2) = write/admin access.
+         Values: 0=none, 1=read-only, 2=write-only(unusual), 3=read+write.
+         OID: base.6.1.3.<index>.
+         SET: equivalent to CLI setperm <pubkey> <perms>."
+    ::= { meshCoreAclEntry 3 }
+
+meshCoreAclLastActivity OBJECT-TYPE
+    SYNTAX      TimeTicks
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION
+        "Time of last activity from this ACL entry, in hundredths of a
+         second since boot (TimeTicks). 0 = never seen since boot.
+         OID: base.6.1.4.<index>."
+    ::= { meshCoreAclEntry 4 }
+
+
+-- ============================================================
+-- 7  regionTable  (1.3.6.1.4.1.62911.1.7.1.<col>.<index>)
+--    index = 0..getRegionCount()-1  (matches RegionMap::getByIdx(i))
+--    index 0 is usually the wildcard '*' region.
+--    Columns: 2=id(ro), 3=parentId(ro), 4=name(rw), 5=floodDenied(rw),
+--             6=isHome(rw), 7=isDefault(rw)
+-- ============================================================
+
+meshCoreRegionEntry OBJECT IDENTIFIER ::= { meshCoreRegionTable 1 }
+
+meshCoreRegionId OBJECT-TYPE
+    SYNTAX      Integer32
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION
+        "Region ID (RegionEntry.id). 0 = wildcard '*' region.
+         OID: base.7.1.2.<index>."
+    ::= { meshCoreRegionEntry 2 }
+
+meshCoreRegionParentId OBJECT-TYPE
+    SYNTAX      Integer32
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION
+        "Parent region ID (RegionEntry.parent).
+         OID: base.7.1.3.<index>."
+    ::= { meshCoreRegionEntry 3 }
+
+meshCoreRegionName OBJECT-TYPE
+    SYNTAX      DisplayString (SIZE (0..32))
+    MAX-ACCESS  read-write
+    STATUS      current
+    DESCRIPTION
+        "Region name. OID: base.7.1.4.<index>.
+         SET creates/repositions a NEW region named <value> as a child of
+         the region at <index> -- does NOT rename row <index> itself
+         (RegionMap has no rename primitive). Equivalent to CLI:
+         region put <name> [parent]."
+    ::= { meshCoreRegionEntry 4 }
+
+meshCoreRegionFloodDenied OBJECT-TYPE
+    SYNTAX      Integer32 (0..1)
+    MAX-ACCESS  read-write
+    STATUS      current
+    DESCRIPTION
+        "Flood denied flag for this region. 0 = flood allowed, 1 = flood denied.
+         OID: base.7.1.5.<index>.
+         SET 1: CLI region denyf <name>. SET 0: CLI region allowf <name>."
+    ::= { meshCoreRegionEntry 5 }
+
+meshCoreRegionIsHome OBJECT-TYPE
+    SYNTAX      Integer32 (0..1)
+    MAX-ACCESS  read-write
+    STATUS      current
+    DESCRIPTION
+        "Home region flag. 0 = not home, 1 = home.
+         OID: base.7.1.6.<index>.
+         SET 1: CLI region home <name>. SET 0: rejected (no clear-home CLI command)."
+    ::= { meshCoreRegionEntry 6 }
+
+meshCoreRegionIsDefault OBJECT-TYPE
+    SYNTAX      Integer32 (0..1)
+    MAX-ACCESS  read-write
+    STATUS      current
+    DESCRIPTION
+        "Default region flag. 0 = not default, 1 = default (at most one row).
+         OID: base.7.1.7.<index>.
+         SET 1: CLI region default <name>.
+         SET 0: only accepted on the row that IS currently default; clears default to null."
+    ::= { meshCoreRegionEntry 7 }
+
+
+-- ============================================================
+-- CONFORMANCE
+-- ============================================================
+
+meshCoreMIBConformance OBJECT IDENTIFIER ::= { meshCoreMIB 99 }
+
+END

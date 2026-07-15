@@ -30,6 +30,11 @@
 #define WITH_BRIDGE
 #endif
 
+#ifdef WITH_SNMP
+#include "helpers/snmp/SNMPAgent.h"
+#include "helpers/snmp/SNMPOids.h"
+#endif
+
 #include <helpers/AdvertDataHelpers.h>
 #include <helpers/ArduinoHelpers.h>
 #include <helpers/ClientACL.h>
@@ -87,7 +92,11 @@ struct NeighbourInfo {
 
 #define PACKET_LOG_FILE  "/packet_log"
 
+#ifdef WITH_SNMP
+class MyMesh : public mesh::Mesh, public CommonCLICallbacks, public SNMPDataSource, public SNMPControlSource {
+#else
 class MyMesh : public mesh::Mesh, public CommonCLICallbacks {
+#endif
   FILESYSTEM* _fs;
   uint32_t last_millis;
   uint64_t uptime_millis;
@@ -126,6 +135,9 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks {
   ESPNowBridge bridge;
 #elif defined(WITH_MQTT_BRIDGE)
   MQTTBridge bridge;
+#endif
+#ifdef WITH_SNMP
+  SNMPAgent snmp_agent;
 #endif
 
   void putNeighbour(const mesh::Identity& id, uint32_t timestamp, float snr);
@@ -192,7 +204,11 @@ public:
   const char* getFirmwareVer() override { return FIRMWARE_VERSION; }
   const char* getBuildDate() override { return FIRMWARE_BUILD_DATE; }
   const char* getRole() override { return FIRMWARE_ROLE; }
+#ifdef WITH_SNMP
+  const char* getNodeName() override { return _prefs.node_name; }
+#else
   const char* getNodeName() { return _prefs.node_name; }
+#endif
   NodePrefs* getNodePrefs() {
     return &_prefs;
   }
@@ -276,6 +292,69 @@ public:
 
   // To check if there is pending work
   bool hasPendingWork() const;
+
+#ifdef WITH_SNMP
+  // SNMPDataSource (getNodeName() is declared earlier in this class, made
+  // an override of SNMPDataSource when WITH_SNMP is defined)
+  const char* getFirmwareRole() override { return FIRMWARE_ROLE; }
+  const char* getFirmwareVersion() override { return FIRMWARE_VERSION; }
+  void getPublicKeyHex(char* buf, size_t len) override;
+  uint32_t getUptimeMillis() override { return (uint32_t)uptime_millis; }
+  uint16_t getBattMilliVolts() override { return board.getBattMilliVolts(); }
+
+  // Dispatcher::getTotalAirTime()/getReceiveAirTime()/getRemainingTxBudget()
+  // return 'unsigned long' (64-bit on this Linux target); SNMP Counter32/
+  // Gauge32 are inherently 32-bit wire types, so we narrow explicitly here
+  // (matches the existing (int16_t)/%u casts in StatsFormatHelper.h).
+  uint32_t getTotalAirTime() override { return (uint32_t)mesh::Dispatcher::getTotalAirTime(); }
+  uint32_t getReceiveAirTime() override { return (uint32_t)mesh::Dispatcher::getReceiveAirTime(); }
+  uint32_t getRemainingTxBudget() override { return (uint32_t)mesh::Dispatcher::getRemainingTxBudget(); }
+  int32_t getNoiseFloor() override { return _radio->getNoiseFloor(); }
+  int32_t getLastRSSI() override { return (int32_t)radio_driver.getLastRSSI(); }
+  float getLastSNR() override { return radio_driver.getLastSNR(); }
+  float getDutyCyclePct() override {
+    float duty_cycle = 1.0f / (1.0f + getAirtimeBudgetFactor());
+    return duty_cycle * 100.0f;
+  }
+
+  uint32_t getNumSentFlood() override { return mesh::Dispatcher::getNumSentFlood(); }
+  uint32_t getNumSentDirect() override { return mesh::Dispatcher::getNumSentDirect(); }
+  uint32_t getNumRecvFlood() override { return mesh::Dispatcher::getNumRecvFlood(); }
+  uint32_t getNumRecvDirect() override { return mesh::Dispatcher::getNumRecvDirect(); }
+  uint32_t getRadioPacketsRecv() override { return radio_driver.getPacketsRecv(); }
+  uint32_t getRadioPacketsSent() override { return radio_driver.getPacketsSent(); }
+  uint32_t getRadioPacketsRecvErrors() override { return radio_driver.getPacketsRecvErrors(); }
+  uint32_t getOutboundQueueLen() override { return _mgr->getOutboundTotal(); }
+  uint32_t getErrFlags() override { return _err_flags; }
+
+#if defined(WITH_MQTT_BRIDGE)
+  uint32_t getBridgeTxPackets() override { return bridge.getStats().tx_packets; }
+  uint32_t getBridgeRxPackets() override { return bridge.getStats().rx_packets; }
+  uint32_t getBridgeReconnects() override { return bridge.getStats().reconnects; }
+#endif
+#endif
+
+#ifdef WITH_SNMP
+  // ---- SNMPControlSource ----
+  bool getControlField(SNMPControlField f, SNMPControlValue* out) override;
+  SNMPSetResult setControlField(SNMPControlField f, const SNMPControlValue& v, char* err, size_t err_len) override;
+  int getAclCount() override { return acl.getNumClients(); }
+  bool getAclPubKeyHex(int idx, char* buf, size_t len) override;
+  bool getAclPermissions(int idx, uint8_t* out) override;
+  bool getAclLastActivityMillis(int idx, uint32_t* out) override;
+  SNMPSetResult setAclPermissions(int idx, uint8_t perms, char* err, size_t err_len) override;
+  int getRegionCount() override { return region_map.getCount(); }
+  bool getRegionId(int idx, uint16_t* out) override;
+  bool getRegionParentId(int idx, uint16_t* out) override;
+  bool getRegionName(int idx, char* buf, size_t len) override;
+  bool getRegionFloodDenied(int idx, uint8_t* out) override;
+  bool getRegionIsHome(int idx, uint8_t* out) override;
+  bool getRegionIsDefault(int idx, uint8_t* out) override;
+  SNMPSetResult setRegionName(int idx, const char* name, char* err, size_t err_len) override;
+  SNMPSetResult setRegionFloodDenied(int idx, uint8_t deny, char* err, size_t err_len) override;
+  SNMPSetResult setRegionIsHome(int idx, uint8_t is_home, char* err, size_t err_len) override;
+  SNMPSetResult setRegionIsDefault(int idx, uint8_t is_default, char* err, size_t err_len) override;
+#endif
 
 #if defined(USE_SX1262) || defined(USE_SX1268)
   void setRxBoostedGain(bool enable) override;

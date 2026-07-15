@@ -862,6 +862,9 @@ MyMesh::MyMesh(mesh::MainBoard &board, mesh::Radio &radio, mesh::MillisecondCloc
 #if defined(WITH_MQTT_BRIDGE)
       , bridge(&_prefs, _mgr, &rtc)
 #endif
+#ifdef WITH_SNMP
+      , snmp_agent(this, this)
+#endif
 {
   last_millis = 0;
   uptime_millis = 0;
@@ -1005,6 +1008,10 @@ void MyMesh::begin(FILESYSTEM *fs) {
     bridge.begin();
   }
 #endif
+#endif
+
+#ifdef WITH_SNMP
+  snmp_agent.begin();
 #endif
 
   radio_driver.setParams(_prefs.freq, _prefs.bw, _prefs.sf, _prefs.cr);
@@ -1315,6 +1322,9 @@ void MyMesh::loop() {
 #ifdef WITH_BRIDGE
   bridge.loop();
 #endif
+#ifdef WITH_SNMP
+  snmp_agent.loop();
+#endif
 
   mesh::Mesh::loop();
 
@@ -1363,3 +1373,321 @@ bool MyMesh::hasPendingWork() const {
 #endif
   return _mgr->getOutboundTotal() > 0;
 }
+
+#ifdef WITH_SNMP
+void MyMesh::getPublicKeyHex(char* buf, size_t len) {
+  static const char* hex = "0123456789ABCDEF";
+  size_t n = 0;
+  for (int i = 0; i < PUB_KEY_SIZE && n + 2 < len; i++) {
+    uint8_t b = self_id.pub_key[i];
+    buf[n++] = hex[b >> 4];
+    buf[n++] = hex[b & 0x0F];
+  }
+  buf[n] = 0;
+}
+
+// Every control-tree SET below synthesizes the equivalent CLI command and
+// runs it through _cli.handleCommand() (the same path serial/BLE use), so
+// validation, rounding, and persistence stay identical to typing it.
+static SNMPSetResult cliResultToSnmp(const char* reply, char* err, size_t err_len) {
+  if (reply[0] == 0 || strncmp(reply, "OK", 2) == 0 || strncmp(reply, "Submitted", 9) == 0) {
+    return SNMPSetResult::Ok;
+  }
+  if (err) snprintf(err, err_len, "%s", reply);
+  return SNMPSetResult::WrongValue;
+}
+
+bool MyMesh::getControlField(SNMPControlField f, SNMPControlValue* out) {
+  char buf[160];
+  switch (f.subgroup) {
+    case SNMP_CTRL_RADIO_HW:
+      switch (f.leaf) {
+        case SNMP_RHW_FREQ_MHZ: { char b[24]; snprintf(b, sizeof(b), "%.3f", (double)_prefs.freq); *out = SNMPControlValue::ofStr(b); return true; }
+        case SNMP_RHW_BW_KHZ:   { char b[24]; snprintf(b, sizeof(b), "%.3f", (double)_prefs.bw); *out = SNMPControlValue::ofStr(b); return true; }
+        case SNMP_RHW_SF:             *out = SNMPControlValue::ofInt(_prefs.sf); return true;
+        case SNMP_RHW_CR:             *out = SNMPControlValue::ofInt(_prefs.cr); return true;
+        case SNMP_RHW_TX_POWER_DBM:   *out = SNMPControlValue::ofInt(_prefs.tx_power_dbm); return true;
+        case SNMP_RHW_RX_BOOSTED_GAIN: *out = SNMPControlValue::ofInt(_prefs.rx_boosted_gain ? 1 : 0); return true;
+      }
+      break;
+    case SNMP_CTRL_ROUTING:
+      switch (f.leaf) {
+        case SNMP_RT_REPEAT_ENABLED:       *out = SNMPControlValue::ofInt(_prefs.disable_fwd ? 0 : 1); return true;
+        case SNMP_RT_DUTY_CYCLE_PCT:       *out = SNMPControlValue::ofInt(_prefs.airtime_factor); return true;
+        case SNMP_RT_TX_DELAY_FACTOR: { char b[24]; snprintf(b, sizeof(b), "%.3f", (double)_prefs.tx_delay_factor); *out = SNMPControlValue::ofStr(b); return true; }
+        case SNMP_RT_DIRECT_TX_DELAY: { char b[24]; snprintf(b, sizeof(b), "%.3f", (double)_prefs.direct_tx_delay_factor); *out = SNMPControlValue::ofStr(b); return true; }
+        case SNMP_RT_RX_DELAY_BASE:   { char b[24]; snprintf(b, sizeof(b), "%.3f", (double)_prefs.rx_delay_base); *out = SNMPControlValue::ofStr(b); return true; }
+        case SNMP_RT_FLOOD_MAX:            *out = SNMPControlValue::ofInt(_prefs.flood_max); return true;
+        case SNMP_RT_FLOOD_MAX_UNSCOPED:   *out = SNMPControlValue::ofInt(_prefs.flood_max_unscoped); return true;
+        case SNMP_RT_FLOOD_MAX_ADVERT:     *out = SNMPControlValue::ofInt(_prefs.flood_max_advert); return true;
+        case SNMP_RT_PATH_HASH_MODE:       *out = SNMPControlValue::ofInt(_prefs.path_hash_mode); return true;
+        case SNMP_RT_LOOP_DETECT:          *out = SNMPControlValue::ofInt(_prefs.loop_detect); return true;
+        case SNMP_RT_INTERFERENCE_THRESH:  *out = SNMPControlValue::ofInt(_prefs.interference_threshold); return true;
+        case SNMP_RT_AGC_RESET_INTERVAL_S: *out = SNMPControlValue::ofInt(_prefs.agc_reset_interval); return true;
+        case SNMP_RT_MULTI_ACKS:           *out = SNMPControlValue::ofInt(_prefs.multi_acks ? 1 : 0); return true;
+        case SNMP_RT_FLOOD_ADVERT_HRS:     *out = SNMPControlValue::ofInt(_prefs.flood_advert_interval); return true;
+        case SNMP_RT_ADVERT_INTERVAL_MINS: *out = SNMPControlValue::ofInt(_prefs.advert_interval); return true;
+      }
+      break;
+    case SNMP_CTRL_SYSTEM:
+      switch (f.leaf) {
+        case SNMP_SYS_NODE_NAME:       *out = SNMPControlValue::ofStr(_prefs.node_name); return true;
+        case SNMP_SYS_LAT: { char b[24]; snprintf(b, sizeof(b), "%.6f", _prefs.node_lat); *out = SNMPControlValue::ofStr(b); return true; }
+        case SNMP_SYS_LON: { char b[24]; snprintf(b, sizeof(b), "%.6f", _prefs.node_lon); *out = SNMPControlValue::ofStr(b); return true; }
+        case SNMP_SYS_OWNER_INFO:      *out = SNMPControlValue::ofStr(""); return true; // owner.info is not stored back as a single readable field in NodePrefs
+        case SNMP_SYS_GUEST_PASSWORD:  *out = SNMPControlValue::ofStr(_prefs.guest_password[0] ? "set" : ""); return true;
+        case SNMP_SYS_ADMIN_PASSWORD:  *out = SNMPControlValue::ofStr(_prefs.password[0] ? "set" : ""); return true;
+        case SNMP_SYS_ALLOW_READ_ONLY: *out = SNMPControlValue::ofInt(0); return true; // not applicable to repeater role
+        case SNMP_SYS_ADC_MULTIPLIER: { char b[24]; snprintf(b, sizeof(b), "%.3f", (double)_prefs.adc_multiplier); *out = SNMPControlValue::ofStr(b); return true; }
+        case SNMP_SYS_POWER_SAVING:    *out = SNMPControlValue::ofInt(0); return true;
+      }
+      break;
+    case SNMP_CTRL_BRIDGE:
+#if defined(WITH_MQTT_BRIDGE)
+      switch (f.leaf) {
+        case SNMP_BR_ENABLED:    *out = SNMPControlValue::ofInt(_prefs.bridge_enabled ? 1 : 0); return true;
+        case SNMP_BR_DELAY_MS:   *out = SNMPControlValue::ofInt(_prefs.bridge_delay); return true;
+        case SNMP_BR_SOURCE:     *out = SNMPControlValue::ofInt(_prefs.bridge_pkt_src); return true;
+        case SNMP_BR_MQTT_AUTOSTART: *out = SNMPControlValue::ofInt(_prefs.mqtt_autostart); return true;
+        default: *out = SNMPControlValue::ofStr(""); return true; // server/topic/user/pass are compile-time-only on this build
+      }
+#else
+      *out = SNMPControlValue::ofInt(0); return true;
+#endif
+    case SNMP_CTRL_ACTIONS:
+      *out = SNMPControlValue::ofInt(0); return true;
+  }
+  return false;
+  (void)buf;
+}
+
+SNMPSetResult MyMesh::setControlField(SNMPControlField f, const SNMPControlValue& v, char* err, size_t err_len) {
+  char cmd[160];
+  char reply[200] = {0};
+
+  switch (f.subgroup) {
+    case SNMP_CTRL_RADIO_HW: {
+      // freq/bw/sf/cr are set atomically via "set radio f,bw,sf,cr"; fill
+      // in the other three from current NodePrefs so a single-field SNMP
+      // SET behaves like editing just that one field in the CLI.
+      float freq = _prefs.freq, bw = _prefs.bw;
+      uint8_t sf = _prefs.sf, cr = _prefs.cr;
+      switch (f.leaf) {
+        case SNMP_RHW_FREQ_MHZ: freq = (float)atof(v.str_value); break;
+        case SNMP_RHW_BW_KHZ:   bw = (float)atof(v.str_value); break;
+        case SNMP_RHW_SF:             sf = (uint8_t)v.int_value; break;
+        case SNMP_RHW_CR:             cr = (uint8_t)v.int_value; break;
+        case SNMP_RHW_TX_POWER_DBM:
+          snprintf(cmd, sizeof(cmd), "set tx %lld", (long long)v.int_value);
+          _cli.handleCommand(0, cmd, reply);
+          return cliResultToSnmp(reply, err, err_len);
+        case SNMP_RHW_RX_BOOSTED_GAIN:
+          snprintf(cmd, sizeof(cmd), "set radio.rxboost %s", v.int_value ? "on" : "off");
+          _cli.handleCommand(0, cmd, reply);
+          return cliResultToSnmp(reply, err, err_len);
+        default: if (err) snprintf(err, err_len, "no such field"); return SNMPSetResult::NotWritable;
+      }
+      snprintf(cmd, sizeof(cmd), "set radio %.3f,%.3f,%u,%u", freq, bw, sf, cr);
+      _cli.handleCommand(0, cmd, reply);
+      return cliResultToSnmp(reply, err, err_len);
+    }
+
+    case SNMP_CTRL_ROUTING: {
+      const char* key = nullptr;
+      bool as_decimal_string = false;
+      switch (f.leaf) {
+        case SNMP_RT_REPEAT_ENABLED:       snprintf(cmd, sizeof(cmd), "set repeat %s", v.int_value ? "on" : "off"); goto rt_send;
+        case SNMP_RT_DUTY_CYCLE_PCT:       key = "dutycycle"; break;
+        case SNMP_RT_TX_DELAY_FACTOR: key = "txdelay"; as_decimal_string = true; break;
+        case SNMP_RT_DIRECT_TX_DELAY: key = "direct.txdelay"; as_decimal_string = true; break;
+        case SNMP_RT_RX_DELAY_BASE:   key = "rxdelay"; as_decimal_string = true; break;
+        case SNMP_RT_FLOOD_MAX:            key = "flood.max"; break;
+        case SNMP_RT_FLOOD_MAX_UNSCOPED:   key = "flood.max.unscoped"; break;
+        case SNMP_RT_FLOOD_MAX_ADVERT:     key = "flood.max.advert"; break;
+        case SNMP_RT_PATH_HASH_MODE:       key = "path.hash.mode"; break;
+        case SNMP_RT_LOOP_DETECT:          key = "loop.detect"; break;
+        case SNMP_RT_INTERFERENCE_THRESH:  key = "int.thresh"; break;
+        case SNMP_RT_AGC_RESET_INTERVAL_S: key = "agc.reset.interval"; break;
+        case SNMP_RT_MULTI_ACKS:           snprintf(cmd, sizeof(cmd), "set multi.acks %s", v.int_value ? "on" : "off"); goto rt_send;
+        case SNMP_RT_FLOOD_ADVERT_HRS:     key = "flood.advert.interval"; break;
+        case SNMP_RT_ADVERT_INTERVAL_MINS: key = "advert.interval"; break;
+        default: if (err) snprintf(err, err_len, "no such field"); return SNMPSetResult::NotWritable;
+      }
+      if (as_decimal_string) {
+        snprintf(cmd, sizeof(cmd), "set %s %s", key, v.str_value);
+      } else {
+        snprintf(cmd, sizeof(cmd), "set %s %lld", key, (long long)v.int_value);
+      }
+    rt_send:
+      _cli.handleCommand(0, cmd, reply);
+      return cliResultToSnmp(reply, err, err_len);
+    }
+
+    case SNMP_CTRL_SYSTEM: {
+      switch (f.leaf) {
+        case SNMP_SYS_NODE_NAME:      snprintf(cmd, sizeof(cmd), "set name %s", v.str_value); break;
+        case SNMP_SYS_LAT:            snprintf(cmd, sizeof(cmd), "set lat %s", v.str_value); break;
+        case SNMP_SYS_LON:            snprintf(cmd, sizeof(cmd), "set lon %s", v.str_value); break;
+        case SNMP_SYS_OWNER_INFO:     snprintf(cmd, sizeof(cmd), "set owner.info %s", v.str_value); break;
+        case SNMP_SYS_GUEST_PASSWORD: snprintf(cmd, sizeof(cmd), "set guest.password %s", v.str_value); break;
+        case SNMP_SYS_ADMIN_PASSWORD: snprintf(cmd, sizeof(cmd), "password %s", v.str_value); break;
+        case SNMP_SYS_ADC_MULTIPLIER:       snprintf(cmd, sizeof(cmd), "set adc.multiplier %s", v.str_value); break;
+        case SNMP_SYS_ALLOW_READ_ONLY:
+        case SNMP_SYS_POWER_SAVING:
+          if (err) snprintf(err, err_len, "not applicable to this role");
+          return SNMPSetResult::NotWritable;
+        default: if (err) snprintf(err, err_len, "no such field"); return SNMPSetResult::NotWritable;
+      }
+      _cli.handleCommand(0, cmd, reply);
+      return cliResultToSnmp(reply, err, err_len);
+    }
+
+#if defined(WITH_MQTT_BRIDGE)
+    case SNMP_CTRL_BRIDGE: {
+      switch (f.leaf) {
+        case SNMP_BR_ENABLED:  snprintf(cmd, sizeof(cmd), "bridge %s", v.int_value ? "start" : "stop"); break;
+        case SNMP_BR_DELAY_MS: snprintf(cmd, sizeof(cmd), "set bridge.delay %lld", (long long)v.int_value); break;
+        case SNMP_BR_SOURCE:   snprintf(cmd, sizeof(cmd), "set bridge.source %s", v.int_value ? "logRx" : "logTx"); break;
+        case SNMP_BR_MQTT_AUTOSTART: snprintf(cmd, sizeof(cmd), "set bridge.autostart %s", v.int_value ? "on" : "off"); break;
+        default:
+          if (err) snprintf(err, err_len, "server/port/topic/user/pass are compile-time-only on this build");
+          return SNMPSetResult::NotWritable;
+      }
+      _cli.handleCommand(0, cmd, reply);
+      return cliResultToSnmp(reply, err, err_len);
+    }
+#else
+    case SNMP_CTRL_BRIDGE:
+      if (err) snprintf(err, err_len, "no bridge compiled in");
+      return SNMPSetResult::NotWritable;
+#endif
+
+    case SNMP_CTRL_ACTIONS: {
+      switch (f.leaf) {
+        case SNMP_ACT_REBOOT:       if (v.int_value) { snprintf(cmd, sizeof(cmd), "reboot"); _cli.handleCommand(0, cmd, reply); } return SNMPSetResult::Ok;
+        case SNMP_ACT_CLKREBOOT:    if (v.int_value) { snprintf(cmd, sizeof(cmd), "clkreboot"); _cli.handleCommand(0, cmd, reply); } return SNMPSetResult::Ok;
+        case SNMP_ACT_ERASE:        if (v.int_value) { snprintf(cmd, sizeof(cmd), "erase"); _cli.handleCommand(0, cmd, reply); } return SNMPSetResult::Ok;
+        case SNMP_ACT_SEND_ADVERT:
+          if (v.int_value == 1) { handleCommand(0, (char*)"advert", reply); }
+          else if (v.int_value == 2) { handleCommand(0, (char*)"advert.zerohop", reply); }
+          return SNMPSetResult::Ok;
+        case SNMP_ACT_CLEAR_STATS:  if (v.int_value) { snprintf(cmd, sizeof(cmd), "clear stats"); handleCommand(0, cmd, reply); } return SNMPSetResult::Ok;
+      }
+      if (err) snprintf(err, err_len, "no such action");
+      return SNMPSetResult::NotWritable;
+    }
+  }
+  if (err) snprintf(err, err_len, "no such field");
+  return SNMPSetResult::NotWritable;
+}
+
+bool MyMesh::getAclPubKeyHex(int idx, char* buf, size_t len) {
+  if (idx < 1 || idx > acl.getNumClients()) return false;
+  auto c = acl.getClientByIdx(idx - 1);
+  if (!c) return false;
+  mesh::Utils::toHex(buf, c->id.pub_key, PUB_KEY_SIZE);
+  return true;
+}
+bool MyMesh::getAclPermissions(int idx, uint8_t* out) {
+  if (idx < 1 || idx > acl.getNumClients()) return false;
+  auto c = acl.getClientByIdx(idx - 1);
+  if (!c) return false;
+  *out = c->permissions;
+  return true;
+}
+bool MyMesh::getAclLastActivityMillis(int idx, uint32_t* out) {
+  if (idx < 1 || idx > acl.getNumClients()) return false;
+  auto c = acl.getClientByIdx(idx - 1);
+  if (!c) return false;
+  *out = c->last_activity;
+  return true;
+}
+SNMPSetResult MyMesh::setAclPermissions(int idx, uint8_t perms, char* err, size_t err_len) {
+  if (idx < 1 || idx > acl.getNumClients()) { if (err) snprintf(err, err_len, "no such row"); return SNMPSetResult::NoSuchInstance; }
+  auto c = acl.getClientByIdx(idx - 1);
+  if (!c) { if (err) snprintf(err, err_len, "no such row"); return SNMPSetResult::NoSuchInstance; }
+  acl.applyPermissions(self_id, c->id.pub_key, PUB_KEY_SIZE, perms);
+  dirty_contacts_expiry = futureMillis(2000);
+  return SNMPSetResult::Ok;
+}
+
+bool MyMesh::getRegionId(int idx, uint16_t* out) {
+  auto r = region_map.getByIdx(idx);
+  if (!r) return false;
+  *out = r->id;
+  return true;
+}
+bool MyMesh::getRegionParentId(int idx, uint16_t* out) {
+  auto r = region_map.getByIdx(idx);
+  if (!r) return false;
+  *out = r->parent;
+  return true;
+}
+bool MyMesh::getRegionName(int idx, char* buf, size_t len) {
+  auto r = region_map.getByIdx(idx);
+  if (!r) return false;
+  snprintf(buf, len, "%s", r->isWildcard() ? "*" : r->name);
+  return true;
+}
+bool MyMesh::getRegionFloodDenied(int idx, uint8_t* out) {
+  auto r = region_map.getByIdx(idx);
+  if (!r) return false;
+  *out = (r->flags & REGION_DENY_FLOOD) ? 1 : 0;
+  return true;
+}
+bool MyMesh::getRegionIsHome(int idx, uint8_t* out) {
+  auto r = region_map.getByIdx(idx);
+  if (!r) return false;
+  auto home = region_map.getHomeRegion();
+  *out = (home != nullptr && home->id == r->id) ? 1 : 0;
+  return true;
+}
+bool MyMesh::getRegionIsDefault(int idx, uint8_t* out) {
+  auto r = region_map.getByIdx(idx);
+  if (!r) return false;
+  auto def = region_map.getDefaultRegion();
+  *out = (def != nullptr && def->id == r->id) ? 1 : 0;
+  return true;
+}
+SNMPSetResult MyMesh::setRegionName(int idx, const char* name, char* err, size_t err_len) {
+  auto r = region_map.getByIdx(idx);
+  if (!r) { if (err) snprintf(err, err_len, "no such row"); return SNMPSetResult::NoSuchInstance; }
+  char cmd[80], reply[160] = {0};
+  snprintf(cmd, sizeof(cmd), "region put %s %s", name, r->isWildcard() ? "" : r->name);
+  handleCommand(0, cmd, reply);
+  return cliResultToSnmp(reply, err, err_len);
+}
+SNMPSetResult MyMesh::setRegionFloodDenied(int idx, uint8_t deny, char* err, size_t err_len) {
+  auto r = region_map.getByIdx(idx);
+  if (!r) { if (err) snprintf(err, err_len, "no such row"); return SNMPSetResult::NoSuchInstance; }
+  char cmd[80], reply[160] = {0};
+  snprintf(cmd, sizeof(cmd), "region %s %s", deny ? "denyf" : "allowf", r->isWildcard() ? "*" : r->name);
+  handleCommand(0, cmd, reply);
+  return cliResultToSnmp(reply, err, err_len);
+}
+SNMPSetResult MyMesh::setRegionIsHome(int idx, uint8_t is_home, char* err, size_t err_len) {
+  auto r = region_map.getByIdx(idx);
+  if (!r) { if (err) snprintf(err, err_len, "no such row"); return SNMPSetResult::NoSuchInstance; }
+  if (!is_home) { if (err) snprintf(err, err_len, "write 1 to make this region home; clearing home is not supported via SNMP"); return SNMPSetResult::WrongValue; }
+  char cmd[80], reply[160] = {0};
+  snprintf(cmd, sizeof(cmd), "region home %s", r->isWildcard() ? "*" : r->name);
+  handleCommand(0, cmd, reply);
+  return cliResultToSnmp(reply, err, err_len);
+}
+SNMPSetResult MyMesh::setRegionIsDefault(int idx, uint8_t is_default, char* err, size_t err_len) {
+  auto r = region_map.getByIdx(idx);
+  if (!r) { if (err) snprintf(err, err_len, "no such row"); return SNMPSetResult::NoSuchInstance; }
+  char cmd[80], reply[160] = {0};
+  if (is_default) {
+    snprintf(cmd, sizeof(cmd), "region default %s", r->isWildcard() ? "*" : r->name);
+  } else {
+    auto def = region_map.getDefaultRegion();
+    if (!def || def->id != r->id) { if (err) snprintf(err, err_len, "row is not the current default"); return SNMPSetResult::WrongValue; }
+    snprintf(cmd, sizeof(cmd), "region default");
+  }
+  handleCommand(0, cmd, reply);
+  return cliResultToSnmp(reply, err, err_len);
+}
+#endif
+
+

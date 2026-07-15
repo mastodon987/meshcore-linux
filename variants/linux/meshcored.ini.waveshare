@@ -2,7 +2,6 @@
 # GPIO numbering is BCM (the number after "GPIO", e.g. GPIO16 = 16).
 
 # Hardware config (read on every startup):
-# For MQTT only comment out all hw lines.
 spidev = /dev/spidev0.0
 # lora_gpiochip = gpiochip0   # Pi 3/4/Zero 2W default; Pi 5 may need gpiochip4 or pinctrl-rp1
 lora_irq_pin = 16
@@ -18,46 +17,9 @@ lora_tx_power = 22
 # DIO2 drives the TX/RX RF switch on the Waveshare Core1262
 dio2_as_rf_switch = 1
 
-# data_dir — where identity and node prefs are persisted (default shown):
-data_dir = /var/lib/meshcore
-
 # First-run node defaults (ignored after first boot; use CLI to change):
 advert_name = Waveshare Linux Repeater
 admin_password = changeme
 lat = 0.0
 lon = 0.0
 
-# ========== MQTT Bridge Configuration ==========
-# Enable MQTT bidirectional bridge for mesh message routing
-# Messages can be queued by apps and forwarded through mesh network
-
-[mqtt]
-# Enable/disable MQTT support
-enabled = true
-
-# MQTT broker settings
-broker = 127.0.0.1
-port = 1883
-client_id = meshcore-server-1
-topic = meshcore/bridge
-
-# Optional authentication
-#username = mqtt_user
-#password = mqtt_pass
-
-# Queue sizes (max messages pending)
-outbound_queue_size = 50
-inbound_queue_size = 50
-
-# Message time-to-live in seconds
-message_ttl_seconds = 3600
-
-# TLS/SSL settings
-use_tls = false
-#tls_ca_file = /etc/meshcore/ca.crt
-
-# MQTT keepalive interval (seconds)
-keepalive_seconds = 60
-
-# Clean session on connect
-clean_session = true

@@ -601,6 +601,7 @@ static const SensorDef SENSOR_TABLE[] = {
   { TELEM_RAK12035_ADDRESS,"RAK12035",     init_rak12035, query_rak12035 },
 #endif
   { 0, nullptr, nullptr, nullptr }  // sentinel — keeps the array non-empty
+
 };
 
 static const size_t SENSOR_TABLE_SIZE = (sizeof(SENSOR_TABLE) / sizeof(SENSOR_TABLE[0])) - 1;

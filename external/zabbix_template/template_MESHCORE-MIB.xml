@@ -1,0 +1,1345 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<zabbix_export>
+    <version>6.2</version>
+    <template_groups>
+        <template_group>
+            <uuid>7df96b18c230490a9a0a9c8d7d8f9ae4</uuid>
+            <name>Templates/Network devices</name>
+        </template_group>
+    </template_groups>
+    <templates>
+        <template>
+            <uuid>a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6</uuid>
+            <template>Template SNMP MeshCore</template>
+            <name>Template SNMP MeshCore</name>
+            <description>MeshCore LoRa mesh repeater/room-server SNMP monitoring.&#13;&#10;OID base: 1.3.6.1.4.1.62911.1&#13;&#10;&#13;&#10;Groups 1-4: read-only stats.&#13;&#10;Groups 5-7: read-write control (requires {$SNMP_RW_COMMUNITY}).&#13;&#10;&#13;&#10;Macros to override per host:&#13;&#10;  {$SNMP_COMMUNITY}    - read community (default: public)&#13;&#10;  {$SNMP_PORT}         - UDP port (default: 161)&#13;&#10;  {$BATT_WARN_V}       - battery warning threshold in V (default: 3.5)&#13;&#10;  {$BATT_CRIT_V}       - battery critical threshold in V (default: 3.2)&#13;&#10;  {$NOISE_WARN_DBM}    - noise floor warning in dBm (default: -90)&#13;&#10;  {$AIRTIME_WARN_PCT}  - airtime utilization warning % (default: 80)&#13;&#10;  {$RX_ERR_DELTA_WARN} - RX errors per 5min before warning (default: 10)&#13;&#10;  {$QUEUE_WARN_LEN}    - outbound queue warning length (default: 5)&#13;&#10;  {$BRIDGE_RECONN_WARN}- bridge reconnects per 15min (default: 3)</description>
+            <groups>
+                <group>
+                    <name>Templates/Network devices</name>
+                </group>
+            </groups>
+            <items>
+
+                <!-- ======================================================== -->
+                <!-- GROUP 1: sysInfo  1.3.6.1.4.1.62911.1.1.x.0             -->
+                <!-- ======================================================== -->
+
+                <item>
+                    <uuid>11000001000000000000000000000001</uuid>
+                    <name>Node Name</name>
+                    <type>SNMPV2</type>
+                    <snmp_oid>.1.3.6.1.4.1.62911.1.1.1.0</snmp_oid>
+                    <key>meshcore.sysinfo.nodename</key>
+                    <delay>1h</delay>
+                    <history>2w</history>
+                    <trends>0</trends>
+                    <value_type>TEXT</value_type>
+                    <description>Human-readable node name. CLI: set name.</description>
+                    <tags>
+                        <tag><tag>component</tag><value>system</value></tag>
+                        <tag><tag>group</tag><value>sysInfo</value></tag>
+                    </tags>
+                </item>
+
+                <item>
+                    <uuid>11000001000000000000000000000002</uuid>
+                    <name>Firmware Role</name>
+                    <type>SNMPV2</type>
+                    <snmp_oid>.1.3.6.1.4.1.62911.1.1.2.0</snmp_oid>
+                    <key>meshcore.sysinfo.role</key>
+                    <delay>1h</delay>
+                    <history>2w</history>
+                    <trends>0</trends>
+                    <value_type>TEXT</value_type>
+                    <description>Firmware role: repeater or room_server.</description>
+                    <tags>
+                        <tag><tag>component</tag><value>system</value></tag>
+                        <tag><tag>group</tag><value>sysInfo</value></tag>
+                    </tags>
+                </item>
+
+                <item>
+                    <uuid>11000001000000000000000000000003</uuid>
+                    <name>Firmware Version</name>
+                    <type>SNMPV2</type>
+                    <snmp_oid>.1.3.6.1.4.1.62911.1.1.3.0</snmp_oid>
+                    <key>meshcore.sysinfo.fwversion</key>
+                    <delay>1h</delay>
+                    <history>2w</history>
+                    <trends>0</trends>
+                    <value_type>TEXT</value_type>
+                    <description>Firmware version string, e.g. v1.16.0.</description>
+                    <tags>
+                        <tag><tag>component</tag><value>system</value></tag>
+                        <tag><tag>group</tag><value>sysInfo</value></tag>
+                    </tags>
+                </item>
+
+                <item>
+                    <uuid>11000001000000000000000000000004</uuid>
+                    <name>Public Key (Hex)</name>
+                    <type>SNMPV2</type>
+                    <snmp_oid>.1.3.6.1.4.1.62911.1.1.4.0</snmp_oid>
+                    <key>meshcore.sysinfo.pubkeyhex</key>
+                    <delay>1h</delay>
+                    <history>2w</history>
+                    <trends>0</trends>
+                    <value_type>TEXT</value_type>
+                    <description>Node identity public key (64 hex chars = 32 bytes). Uniquely identifies this node on the mesh.</description>
+                    <tags>
+                        <tag><tag>component</tag><value>system</value></tag>
+                        <tag><tag>group</tag><value>sysInfo</value></tag>
+                    </tags>
+                </item>
+
+                <item>
+                    <uuid>11000001000000000000000000000005</uuid>
+                    <name>Uptime</name>
+                    <type>SNMPV2</type>
+                    <snmp_oid>.1.3.6.1.4.1.62911.1.1.5.0</snmp_oid>
+                    <key>meshcore.sysinfo.uptime</key>
+                    <delay>5m</delay>
+                    <history>2w</history>
+                    <trends>90d</trends>
+                    <value_type>FLOAT</value_type>
+                    <units>s</units>
+                    <description>Time since boot. Raw TimeTicks (hundredths of a second) converted to seconds.</description>
+                    <preprocessing>
+                        <step>
+                            <type>MULTIPLIER</type>
+                            <params>0.01</params>
+                        </step>
+                    </preprocessing>
+                    <tags>
+                        <tag><tag>component</tag><value>system</value></tag>
+                        <tag><tag>group</tag><value>sysInfo</value></tag>
+                    </tags>
+                </item>
+
+                <item>
+                    <uuid>11000001000000000000000000000006</uuid>
+                    <name>Battery Voltage</name>
+                    <type>SNMPV2</type>
+                    <snmp_oid>.1.3.6.1.4.1.62911.1.1.6.0</snmp_oid>
+                    <key>meshcore.sysinfo.batt.v</key>
+                    <delay>5m</delay>
+                    <history>2w</history>
+                    <trends>90d</trends>
+                    <value_type>FLOAT</value_type>
+                    <units>V</units>
+                    <description>Battery voltage. Raw Gauge32 in millivolts, displayed as volts. 0 = no battery hardware.</description>
+                    <preprocessing>
+                        <step>
+                            <type>MULTIPLIER</type>
+                            <params>0.001</params>
+                        </step>
+                    </preprocessing>
+                    <tags>
+                        <tag><tag>component</tag><value>system</value></tag>
+                        <tag><tag>group</tag><value>sysInfo</value></tag>
+                    </tags>
+                </item>
+
+                <!-- ======================================================== -->
+                <!-- GROUP 2: radioStats  1.3.6.1.4.1.62911.1.2.x.0          -->
+                <!-- ======================================================== -->
+
+                <item>
+                    <uuid>11000002000000000000000000000001</uuid>
+                    <name>Total TX Air Time</name>
+                    <type>SNMPV2</type>
+                    <snmp_oid>.1.3.6.1.4.1.62911.1.2.1.0</snmp_oid>
+                    <key>meshcore.radio.airtime.tx.s</key>
+                    <delay>1m</delay>
+                    <history>2w</history>
+                    <trends>90d</trends>
+                    <value_type>FLOAT</value_type>
+                    <units>s</units>
+                    <description>Cumulative TX air time since boot. Drives duty-cycle enforcement. Raw Counter32 in ms.</description>
+                    <preprocessing>
+                        <step>
+                            <type>MULTIPLIER</type>
+                            <params>0.001</params>
+                        </step>
+                    </preprocessing>
+                    <tags>
+                        <tag><tag>component</tag><value>radio</value></tag>
+                        <tag><tag>group</tag><value>radioStats</value></tag>
+                    </tags>
+                </item>
+
+                <item>
+                    <uuid>11000002000000000000000000000002</uuid>
+                    <name>RX Air Time</name>
+                    <type>SNMPV2</type>
+                    <snmp_oid>.1.3.6.1.4.1.62911.1.2.2.0</snmp_oid>
+                    <key>meshcore.radio.airtime.rx.s</key>
+                    <delay>1m</delay>
+                    <history>2w</history>
+                    <trends>90d</trends>
+                    <value_type>FLOAT</value_type>
+                    <units>s</units>
+                    <description>Cumulative RX air time since boot. Raw Counter32 in ms.</description>
+                    <preprocessing>
+                        <step>
+                            <type>MULTIPLIER</type>
+                            <params>0.001</params>
+                        </step>
+                    </preprocessing>
+                    <tags>
+                        <tag><tag>component</tag><value>radio</value></tag>
+                        <tag><tag>group</tag><value>radioStats</value></tag>
+                    </tags>
+                </item>
+
+                <item>
+                    <uuid>11000002000000000000000000000003</uuid>
+                    <name>Remaining TX Budget</name>
+                    <type>SNMPV2</type>
+                    <snmp_oid>.1.3.6.1.4.1.62911.1.2.3.0</snmp_oid>
+                    <key>meshcore.radio.txbudget.s</key>
+                    <delay>1m</delay>
+                    <history>2w</history>
+                    <trends>90d</trends>
+                    <value_type>FLOAT</value_type>
+                    <units>s</units>
+                    <description>Remaining TX duty-cycle budget right now. 0 = node deferring all TX. Raw Gauge32 in ms.</description>
+                    <preprocessing>
+                        <step>
+                            <type>MULTIPLIER</type>
+                            <params>0.001</params>
+                        </step>
+                    </preprocessing>
+                    <tags>
+                        <tag><tag>component</tag><value>radio</value></tag>
+                        <tag><tag>group</tag><value>radioStats</value></tag>
+                    </tags>
+                </item>
+
+                <item>
+                    <uuid>11000002000000000000000000000004</uuid>
+                    <name>Noise Floor</name>
+                    <type>SNMPV2</type>
+                    <snmp_oid>.1.3.6.1.4.1.62911.1.2.4.0</snmp_oid>
+                    <key>meshcore.radio.noisefloor.dbm</key>
+                    <delay>1m</delay>
+                    <history>2w</history>
+                    <trends>90d</trends>
+                    <value_type>FLOAT</value_type>
+                    <units>dBm</units>
+                    <description>Current noise floor from LoRa transceiver. Less negative = more interference. Typical: -104 dBm.</description>
+                    <tags>
+                        <tag><tag>component</tag><value>radio</value></tag>
+                        <tag><tag>group</tag><value>radioStats</value></tag>
+                    </tags>
+                </item>
+
+                <item>
+                    <uuid>11000002000000000000000000000005</uuid>
+                    <name>Last RSSI</name>
+                    <type>SNMPV2</type>
+                    <snmp_oid>.1.3.6.1.4.1.62911.1.2.5.0</snmp_oid>
+                    <key>meshcore.radio.rssi.dbm</key>
+                    <delay>1m</delay>
+                    <history>2w</history>
+                    <trends>90d</trends>
+                    <value_type>FLOAT</value_type>
+                    <units>dBm</units>
+                    <description>RSSI of the most recently received LoRa packet.</description>
+                    <tags>
+                        <tag><tag>component</tag><value>radio</value></tag>
+                        <tag><tag>group</tag><value>radioStats</value></tag>
+                    </tags>
+                </item>
+
+                <item>
+                    <uuid>11000002000000000000000000000006</uuid>
+                    <name>Last SNR</name>
+                    <type>SNMPV2</type>
+                    <snmp_oid>.1.3.6.1.4.1.62911.1.2.6.0</snmp_oid>
+                    <key>meshcore.radio.snr.db</key>
+                    <delay>1m</delay>
+                    <history>2w</history>
+                    <trends>90d</trends>
+                    <value_type>FLOAT</value_type>
+                    <units>dB</units>
+                    <description>SNR of the most recently received LoRa packet. Decimal ASCII string, unscaled. Negative is normal for LoRa. Example: -1.25</description>
+                    <tags>
+                        <tag><tag>component</tag><value>radio</value></tag>
+                        <tag><tag>group</tag><value>radioStats</value></tag>
+                    </tags>
+                </item>
+
+                <item>
+                    <uuid>11000002000000000000000000000007</uuid>
+                    <name>Duty Cycle Allowance</name>
+                    <type>SNMPV2</type>
+                    <snmp_oid>.1.3.6.1.4.1.62911.1.2.7.0</snmp_oid>
+                    <key>meshcore.radio.dutycycle.pct</key>
+                    <delay>5m</delay>
+                    <history>2w</history>
+                    <trends>90d</trends>
+                    <value_type>FLOAT</value_type>
+                    <units>%</units>
+                    <description>Configured TX duty-cycle ceiling as decimal ASCII percent. This is the configured limit, not live utilization. Example: 12.50</description>
+                    <tags>
+                        <tag><tag>component</tag><value>radio</value></tag>
+                        <tag><tag>group</tag><value>radioStats</value></tag>
+                    </tags>
+                </item>
+
+                <item>
+                    <uuid>11000002000000000000000000000008</uuid>
+                    <name>Airtime Utilization</name>
+                    <type>SNMPV2</type>
+                    <snmp_oid>.1.3.6.1.4.1.62911.1.2.8.0</snmp_oid>
+                    <key>meshcore.radio.airtime.util.pct</key>
+                    <delay>1m</delay>
+                    <history>2w</history>
+                    <trends>90d</trends>
+                    <value_type>FLOAT</value_type>
+                    <units>%</units>
+                    <description>Live airtime utilization as decimal ASCII percent (0.00-100.00). Self-measuring: airtime consumed since last read / elapsed time * 100. Poll interval = averaging window. First read after boot returns 0.00.</description>
+                    <tags>
+                        <tag><tag>component</tag><value>radio</value></tag>
+                        <tag><tag>group</tag><value>radioStats</value></tag>
+                    </tags>
+                </item>
+
+                <!-- ======================================================== -->
+                <!-- GROUP 3: packetStats  1.3.6.1.4.1.62911.1.3.x.0         -->
+                <!-- ======================================================== -->
+
+                <item>
+                    <uuid>11000003000000000000000000000001</uuid>
+                    <name>Packets Sent (Flood)</name>
+                    <type>SNMPV2</type>
+                    <snmp_oid>.1.3.6.1.4.1.62911.1.3.1.0</snmp_oid>
+                    <key>meshcore.pkt.sent.flood</key>
+                    <delay>1m</delay>
+                    <history>2w</history>
+                    <trends>90d</trends>
+                    <value_type>UNSIGNED</value_type>
+                    <description>Flood (broadcast) packets transmitted since boot.</description>
+                    <tags>
+                        <tag><tag>component</tag><value>packets</value></tag>
+                        <tag><tag>group</tag><value>packetStats</value></tag>
+                    </tags>
+                </item>
+
+                <item>
+                    <uuid>11000003000000000000000000000002</uuid>
+                    <name>Packets Sent (Direct)</name>
+                    <type>SNMPV2</type>
+                    <snmp_oid>.1.3.6.1.4.1.62911.1.3.2.0</snmp_oid>
+                    <key>meshcore.pkt.sent.direct</key>
+                    <delay>1m</delay>
+                    <history>2w</history>
+                    <trends>90d</trends>
+                    <value_type>UNSIGNED</value_type>
+                    <description>Direct (unicast/routed) packets transmitted since boot.</description>
+                    <tags>
+                        <tag><tag>component</tag><value>packets</value></tag>
+                        <tag><tag>group</tag><value>packetStats</value></tag>
+                    </tags>
+                </item>
+
+                <item>
+                    <uuid>11000003000000000000000000000003</uuid>
+                    <name>Packets Received (Flood)</name>
+                    <type>SNMPV2</type>
+                    <snmp_oid>.1.3.6.1.4.1.62911.1.3.3.0</snmp_oid>
+                    <key>meshcore.pkt.recv.flood</key>
+                    <delay>1m</delay>
+                    <history>2w</history>
+                    <trends>90d</trends>
+                    <value_type>UNSIGNED</value_type>
+                    <description>Flood packets received and accepted after duplicate filtering.</description>
+                    <tags>
+                        <tag><tag>component</tag><value>packets</value></tag>
+                        <tag><tag>group</tag><value>packetStats</value></tag>
+                    </tags>
+                </item>
+
+                <item>
+                    <uuid>11000003000000000000000000000004</uuid>
+                    <name>Packets Received (Direct)</name>
+                    <type>SNMPV2</type>
+                    <snmp_oid>.1.3.6.1.4.1.62911.1.3.4.0</snmp_oid>
+                    <key>meshcore.pkt.recv.direct</key>
+                    <delay>1m</delay>
+                    <history>2w</history>
+                    <trends>90d</trends>
+                    <value_type>UNSIGNED</value_type>
+                    <description>Direct packets received and accepted since boot.</description>
+                    <tags>
+                        <tag><tag>component</tag><value>packets</value></tag>
+                        <tag><tag>group</tag><value>packetStats</value></tag>
+                    </tags>
+                </item>
+
+                <item>
+                    <uuid>11000003000000000000000000000005</uuid>
+                    <name>Radio Packets Received (Raw)</name>
+                    <type>SNMPV2</type>
+                    <snmp_oid>.1.3.6.1.4.1.62911.1.3.5.0</snmp_oid>
+                    <key>meshcore.radio.pkt.recv.raw</key>
+                    <delay>1m</delay>
+                    <history>2w</history>
+                    <trends>90d</trends>
+                    <value_type>UNSIGNED</value_type>
+                    <description>Raw packets received by radio driver before mesh-layer filtering. Includes duplicates, foreign-network packets, and decode failures.</description>
+                    <tags>
+                        <tag><tag>component</tag><value>packets</value></tag>
+                        <tag><tag>group</tag><value>packetStats</value></tag>
+                    </tags>
+                </item>
+
+                <item>
+                    <uuid>11000003000000000000000000000006</uuid>
+                    <name>Radio Packets Sent (Raw)</name>
+                    <type>SNMPV2</type>
+                    <snmp_oid>.1.3.6.1.4.1.62911.1.3.6.0</snmp_oid>
+                    <key>meshcore.radio.pkt.sent.raw</key>
+                    <delay>1m</delay>
+                    <history>2w</history>
+                    <trends>90d</trends>
+                    <value_type>UNSIGNED</value_type>
+                    <description>Raw packets handed to radio driver for TX since boot.</description>
+                    <tags>
+                        <tag><tag>component</tag><value>packets</value></tag>
+                        <tag><tag>group</tag><value>packetStats</value></tag>
+                    </tags>
+                </item>
+
+                <item>
+                    <uuid>11000003000000000000000000000007</uuid>
+                    <name>Radio RX Errors</name>
+                    <type>SNMPV2</type>
+                    <snmp_oid>.1.3.6.1.4.1.62911.1.3.7.0</snmp_oid>
+                    <key>meshcore.radio.pkt.recv.errors</key>
+                    <delay>1m</delay>
+                    <history>2w</history>
+                    <trends>90d</trends>
+                    <value_type>UNSIGNED</value_type>
+                    <description>RX errors from radio driver: CRC failures, header errors. Persistently rising = RF interference or misconfigured channel (wrong freq/BW/SF).</description>
+                    <tags>
+                        <tag><tag>component</tag><value>packets</value></tag>
+                        <tag><tag>group</tag><value>packetStats</value></tag>
+                    </tags>
+                </item>
+
+                <item>
+                    <uuid>11000003000000000000000000000008</uuid>
+                    <name>Outbound Queue Length</name>
+                    <type>SNMPV2</type>
+                    <snmp_oid>.1.3.6.1.4.1.62911.1.3.8.0</snmp_oid>
+                    <key>meshcore.pkt.queue.outbound</key>
+                    <delay>1m</delay>
+                    <history>2w</history>
+                    <trends>90d</trends>
+                    <value_type>UNSIGNED</value_type>
+                    <units>packets</units>
+                    <description>Current outbound TX queue depth. Should be near 0. Non-zero = congestion or duty-cycle limiting.</description>
+                    <tags>
+                        <tag><tag>component</tag><value>packets</value></tag>
+                        <tag><tag>group</tag><value>packetStats</value></tag>
+                    </tags>
+                </item>
+
+                <item>
+                    <uuid>11000003000000000000000000000009</uuid>
+                    <name>Error Flags</name>
+                    <type>SNMPV2</type>
+                    <snmp_oid>.1.3.6.1.4.1.62911.1.3.9.0</snmp_oid>
+                    <key>meshcore.err.flags</key>
+                    <delay>1m</delay>
+                    <history>2w</history>
+                    <trends>90d</trends>
+                    <value_type>UNSIGNED</value_type>
+                    <description>Internal error flags bitmask (_err_flags in Dispatcher). 0 = no errors. Correlate with src/Dispatcher.h for the running firmware version.</description>
+                    <tags>
+                        <tag><tag>component</tag><value>packets</value></tag>
+                        <tag><tag>group</tag><value>packetStats</value></tag>
+                    </tags>
+                </item>
+
+                <!-- ======================================================== -->
+                <!-- GROUP 4: bridgeStats  1.3.6.1.4.1.62911.1.4.x.0         -->
+                <!-- ======================================================== -->
+
+                <item>
+                    <uuid>11000004000000000000000000000001</uuid>
+                    <name>Bridge TX Packets</name>
+                    <type>SNMPV2</type>
+                    <snmp_oid>.1.3.6.1.4.1.62911.1.4.1.0</snmp_oid>
+                    <key>meshcore.bridge.pkt.tx</key>
+                    <delay>1m</delay>
+                    <history>2w</history>
+                    <trends>90d</trends>
+                    <value_type>UNSIGNED</value_type>
+                    <description>Packets forwarded mesh to bridge (e.g. published to MQTT) since boot. 0 if no bridge compiled in.</description>
+                    <tags>
+                        <tag><tag>component</tag><value>bridge</value></tag>
+                        <tag><tag>group</tag><value>bridgeStats</value></tag>
+                    </tags>
+                </item>
+
+                <item>
+                    <uuid>11000004000000000000000000000002</uuid>
+                    <name>Bridge RX Packets</name>
+                    <type>SNMPV2</type>
+                    <snmp_oid>.1.3.6.1.4.1.62911.1.4.2.0</snmp_oid>
+                    <key>meshcore.bridge.pkt.rx</key>
+                    <delay>1m</delay>
+                    <history>2w</history>
+                    <trends>90d</trends>
+                    <value_type>UNSIGNED</value_type>
+                    <description>Packets received from bridge and injected into mesh since boot. 0 if no bridge compiled in.</description>
+                    <tags>
+                        <tag><tag>component</tag><value>bridge</value></tag>
+                        <tag><tag>group</tag><value>bridgeStats</value></tag>
+                    </tags>
+                </item>
+
+                <item>
+                    <uuid>11000004000000000000000000000003</uuid>
+                    <name>Bridge Reconnects</name>
+                    <type>SNMPV2</type>
+                    <snmp_oid>.1.3.6.1.4.1.62911.1.4.3.0</snmp_oid>
+                    <key>meshcore.bridge.reconnects</key>
+                    <delay>1m</delay>
+                    <history>2w</history>
+                    <trends>90d</trends>
+                    <value_type>UNSIGNED</value_type>
+                    <description>Bridge transport reconnections since boot (e.g. MQTT TCP reconnects). Rapidly rising = unstable broker. 0 if no bridge.</description>
+                    <tags>
+                        <tag><tag>component</tag><value>bridge</value></tag>
+                        <tag><tag>group</tag><value>bridgeStats</value></tag>
+                    </tags>
+                </item>
+
+                <!-- ======================================================== -->
+                <!-- GROUP 5.1: control.radioHw  1.3.6.1.4.1.62911.1.5.1.x.0 -->
+                <!-- ======================================================== -->
+
+                <item>
+                    <uuid>11000051000000000000000000000001</uuid>
+                    <name>Config: Radio Frequency</name>
+                    <type>SNMPV2</type>
+                    <snmp_oid>.1.3.6.1.4.1.62911.1.5.1.1.0</snmp_oid>
+                    <key>meshcore.cfg.radio.freq.mhz</key>
+                    <delay>10m</delay>
+                    <history>2w</history>
+                    <trends>90d</trends>
+                    <value_type>FLOAT</value_type>
+                    <units>MHz</units>
+                    <description>Radio frequency (decimal ASCII MHz). Example: 869.525. CLI: set freq.</description>
+                    <tags>
+                        <tag><tag>component</tag><value>config</value></tag>
+                        <tag><tag>group</tag><value>radioHw</value></tag>
+                    </tags>
+                </item>
+
+                <item>
+                    <uuid>11000051000000000000000000000002</uuid>
+                    <name>Config: Radio Bandwidth</name>
+                    <type>SNMPV2</type>
+                    <snmp_oid>.1.3.6.1.4.1.62911.1.5.1.2.0</snmp_oid>
+                    <key>meshcore.cfg.radio.bw.khz</key>
+                    <delay>10m</delay>
+                    <history>2w</history>
+                    <trends>90d</trends>
+                    <value_type>FLOAT</value_type>
+                    <units>kHz</units>
+                    <description>Radio bandwidth (decimal ASCII kHz). Example: 250.000. CLI: set bw.</description>
+                    <tags>
+                        <tag><tag>component</tag><value>config</value></tag>
+                        <tag><tag>group</tag><value>radioHw</value></tag>
+                    </tags>
+                </item>
+
+                <item>
+                    <uuid>11000051000000000000000000000003</uuid>
+                    <name>Config: Spreading Factor</name>
+                    <type>SNMPV2</type>
+                    <snmp_oid>.1.3.6.1.4.1.62911.1.5.1.3.0</snmp_oid>
+                    <key>meshcore.cfg.radio.sf</key>
+                    <delay>10m</delay>
+                    <history>2w</history>
+                    <trends>90d</trends>
+                    <value_type>UNSIGNED</value_type>
+                    <description>Spreading factor (5-12). CLI: set sf.</description>
+                    <tags>
+                        <tag><tag>component</tag><value>config</value></tag>
+                        <tag><tag>group</tag><value>radioHw</value></tag>
+                    </tags>
+                </item>
+
+                <item>
+                    <uuid>11000051000000000000000000000004</uuid>
+                    <name>Config: Coding Rate</name>
+                    <type>SNMPV2</type>
+                    <snmp_oid>.1.3.6.1.4.1.62911.1.5.1.4.0</snmp_oid>
+                    <key>meshcore.cfg.radio.cr</key>
+                    <delay>10m</delay>
+                    <history>2w</history>
+                    <trends>90d</trends>
+                    <value_type>UNSIGNED</value_type>
+                    <description>Coding rate (5-8). CLI: set cr.</description>
+                    <tags>
+                        <tag><tag>component</tag><value>config</value></tag>
+                        <tag><tag>group</tag><value>radioHw</value></tag>
+                    </tags>
+                </item>
+
+                <item>
+                    <uuid>11000051000000000000000000000005</uuid>
+                    <name>Config: TX Power</name>
+                    <type>SNMPV2</type>
+                    <snmp_oid>.1.3.6.1.4.1.62911.1.5.1.5.0</snmp_oid>
+                    <key>meshcore.cfg.radio.txpower.dbm</key>
+                    <delay>10m</delay>
+                    <history>2w</history>
+                    <trends>90d</trends>
+                    <value_type>UNSIGNED</value_type>
+                    <units>dBm</units>
+                    <description>TX power in dBm (1-22). CLI: set txpower.</description>
+                    <tags>
+                        <tag><tag>component</tag><value>config</value></tag>
+                        <tag><tag>group</tag><value>radioHw</value></tag>
+                    </tags>
+                </item>
+
+                <item>
+                    <uuid>11000051000000000000000000000006</uuid>
+                    <name>Config: RX Boosted Gain</name>
+                    <type>SNMPV2</type>
+                    <snmp_oid>.1.3.6.1.4.1.62911.1.5.1.6.0</snmp_oid>
+                    <key>meshcore.cfg.radio.rxboost</key>
+                    <delay>10m</delay>
+                    <history>2w</history>
+                    <trends>0</trends>
+                    <value_type>UNSIGNED</value_type>
+                    <description>RX boosted gain. 0=off, 1=on. CLI: set rxboost.</description>
+                    <tags>
+                        <tag><tag>component</tag><value>config</value></tag>
+                        <tag><tag>group</tag><value>radioHw</value></tag>
+                    </tags>
+                </item>
+
+                <!-- ======================================================== -->
+                <!-- GROUP 5.2: control.routing  1.3.6.1.4.1.62911.1.5.2.x.0 -->
+                <!-- ======================================================== -->
+
+                <item>
+                    <uuid>11000052000000000000000000000001</uuid>
+                    <name>Config: Repeat Enabled</name>
+                    <type>SNMPV2</type>
+                    <snmp_oid>.1.3.6.1.4.1.62911.1.5.2.1.0</snmp_oid>
+                    <key>meshcore.cfg.routing.repeat</key>
+                    <delay>10m</delay>
+                    <history>2w</history>
+                    <trends>0</trends>
+                    <value_type>UNSIGNED</value_type>
+                    <description>Packet repeating enabled. 0=off, 1=on. CLI: set repeat.</description>
+                    <tags>
+                        <tag><tag>component</tag><value>config</value></tag>
+                        <tag><tag>group</tag><value>routing</value></tag>
+                    </tags>
+                </item>
+
+                <item>
+                    <uuid>11000052000000000000000000000002</uuid>
+                    <name>Config: Duty Cycle Limit</name>
+                    <type>SNMPV2</type>
+                    <snmp_oid>.1.3.6.1.4.1.62911.1.5.2.2.0</snmp_oid>
+                    <key>meshcore.cfg.routing.dutycycle.pct</key>
+                    <delay>10m</delay>
+                    <history>2w</history>
+                    <trends>90d</trends>
+                    <value_type>UNSIGNED</value_type>
+                    <units>%</units>
+                    <description>TX duty-cycle ceiling, whole percent 1-100. CLI: set dutycycle.</description>
+                    <tags>
+                        <tag><tag>component</tag><value>config</value></tag>
+                        <tag><tag>group</tag><value>routing</value></tag>
+                    </tags>
+                </item>
+
+                <item>
+                    <uuid>11000052000000000000000000000003</uuid>
+                    <name>Config: TX Delay Factor</name>
+                    <type>SNMPV2</type>
+                    <snmp_oid>.1.3.6.1.4.1.62911.1.5.2.3.0</snmp_oid>
+                    <key>meshcore.cfg.routing.txdelay</key>
+                    <delay>10m</delay>
+                    <history>2w</history>
+                    <trends>0</trends>
+                    <value_type>FLOAT</value_type>
+                    <description>TX delay factor (decimal ASCII, unscaled). Example: 1.50. CLI: set txdelay.</description>
+                    <tags>
+                        <tag><tag>component</tag><value>config</value></tag>
+                        <tag><tag>group</tag><value>routing</value></tag>
+                    </tags>
+                </item>
+
+                <item>
+                    <uuid>11000052000000000000000000000004</uuid>
+                    <name>Config: Direct TX Delay</name>
+                    <type>SNMPV2</type>
+                    <snmp_oid>.1.3.6.1.4.1.62911.1.5.2.4.0</snmp_oid>
+                    <key>meshcore.cfg.routing.directdelay</key>
+                    <delay>10m</delay>
+                    <history>2w</history>
+                    <trends>0</trends>
+                    <value_type>FLOAT</value_type>
+                    <description>Direct TX delay factor (decimal ASCII, unscaled). CLI: set directdelay.</description>
+                    <tags>
+                        <tag><tag>component</tag><value>config</value></tag>
+                        <tag><tag>group</tag><value>routing</value></tag>
+                    </tags>
+                </item>
+
+                <item>
+                    <uuid>11000052000000000000000000000005</uuid>
+                    <name>Config: RX Delay Base</name>
+                    <type>SNMPV2</type>
+                    <snmp_oid>.1.3.6.1.4.1.62911.1.5.2.5.0</snmp_oid>
+                    <key>meshcore.cfg.routing.rxdelay</key>
+                    <delay>10m</delay>
+                    <history>2w</history>
+                    <trends>0</trends>
+                    <value_type>FLOAT</value_type>
+                    <description>RX delay base factor (decimal ASCII, unscaled). CLI: set rxdelay.</description>
+                    <tags>
+                        <tag><tag>component</tag><value>config</value></tag>
+                        <tag><tag>group</tag><value>routing</value></tag>
+                    </tags>
+                </item>
+
+                <item>
+                    <uuid>11000052000000000000000000000006</uuid>
+                    <name>Config: Flood Max Hops</name>
+                    <type>SNMPV2</type>
+                    <snmp_oid>.1.3.6.1.4.1.62911.1.5.2.6.0</snmp_oid>
+                    <key>meshcore.cfg.routing.flood.max</key>
+                    <delay>10m</delay>
+                    <history>2w</history>
+                    <trends>0</trends>
+                    <value_type>UNSIGNED</value_type>
+                    <description>Maximum flood hops (0-64). CLI: set flood.max.</description>
+                    <tags>
+                        <tag><tag>component</tag><value>config</value></tag>
+                        <tag><tag>group</tag><value>routing</value></tag>
+                    </tags>
+                </item>
+
+                <item>
+                    <uuid>11000052000000000000000000000007</uuid>
+                    <name>Config: Flood Max Hops (Unscoped)</name>
+                    <type>SNMPV2</type>
+                    <snmp_oid>.1.3.6.1.4.1.62911.1.5.2.7.0</snmp_oid>
+                    <key>meshcore.cfg.routing.flood.max.unscoped</key>
+                    <delay>10m</delay>
+                    <history>2w</history>
+                    <trends>0</trends>
+                    <value_type>UNSIGNED</value_type>
+                    <description>Flood max hops for unscoped packets (0-64; 255=track flood.max). CLI: set flood.max.unscoped.</description>
+                    <tags>
+                        <tag><tag>component</tag><value>config</value></tag>
+                        <tag><tag>group</tag><value>routing</value></tag>
+                    </tags>
+                </item>
+
+                <item>
+                    <uuid>11000052000000000000000000000008</uuid>
+                    <name>Config: Flood Max Hops (Advert)</name>
+                    <type>SNMPV2</type>
+                    <snmp_oid>.1.3.6.1.4.1.62911.1.5.2.8.0</snmp_oid>
+                    <key>meshcore.cfg.routing.flood.max.advert</key>
+                    <delay>10m</delay>
+                    <history>2w</history>
+                    <trends>0</trends>
+                    <value_type>UNSIGNED</value_type>
+                    <description>Flood max hops for advertisement packets (0-64). CLI: set flood.max.advert.</description>
+                    <tags>
+                        <tag><tag>component</tag><value>config</value></tag>
+                        <tag><tag>group</tag><value>routing</value></tag>
+                    </tags>
+                </item>
+
+                <item>
+                    <uuid>11000052000000000000000000000009</uuid>
+                    <name>Config: Path Hash Mode</name>
+                    <type>SNMPV2</type>
+                    <snmp_oid>.1.3.6.1.4.1.62911.1.5.2.9.0</snmp_oid>
+                    <key>meshcore.cfg.routing.pathhash</key>
+                    <delay>10m</delay>
+                    <history>2w</history>
+                    <trends>0</trends>
+                    <value_type>UNSIGNED</value_type>
+                    <description>Path hash mode (0-2). CLI: set path.hash.</description>
+                    <tags>
+                        <tag><tag>component</tag><value>config</value></tag>
+                        <tag><tag>group</tag><value>routing</value></tag>
+                    </tags>
+                </item>
+
+                <item>
+                    <uuid>11000052000000000000000000000010</uuid>
+                    <name>Config: Loop Detection Mode</name>
+                    <type>SNMPV2</type>
+                    <snmp_oid>.1.3.6.1.4.1.62911.1.5.2.10.0</snmp_oid>
+                    <key>meshcore.cfg.routing.loopdetect</key>
+                    <delay>10m</delay>
+                    <history>2w</history>
+                    <trends>0</trends>
+                    <value_type>UNSIGNED</value_type>
+                    <description>Loop detection mode: 0=off, 1=minimal, 2=moderate, 3=strict. CLI: set loopdetect.</description>
+                    <tags>
+                        <tag><tag>component</tag><value>config</value></tag>
+                        <tag><tag>group</tag><value>routing</value></tag>
+                    </tags>
+                </item>
+
+                <item>
+                    <uuid>11000052000000000000000000000011</uuid>
+                    <name>Config: Interference Threshold</name>
+                    <type>SNMPV2</type>
+                    <snmp_oid>.1.3.6.1.4.1.62911.1.5.2.11.0</snmp_oid>
+                    <key>meshcore.cfg.routing.interference.thresh</key>
+                    <delay>10m</delay>
+                    <history>2w</history>
+                    <trends>0</trends>
+                    <value_type>FLOAT</value_type>
+                    <units>dBm</units>
+                    <description>Interference detection threshold in dBm. CLI: set interference.</description>
+                    <tags>
+                        <tag><tag>component</tag><value>config</value></tag>
+                        <tag><tag>group</tag><value>routing</value></tag>
+                    </tags>
+                </item>
+
+                <item>
+                    <uuid>11000052000000000000000000000012</uuid>
+                    <name>Config: AGC Reset Interval</name>
+                    <type>SNMPV2</type>
+                    <snmp_oid>.1.3.6.1.4.1.62911.1.5.2.12.0</snmp_oid>
+                    <key>meshcore.cfg.routing.agc.reset.s</key>
+                    <delay>10m</delay>
+                    <history>2w</history>
+                    <trends>0</trends>
+                    <value_type>UNSIGNED</value_type>
+                    <units>s</units>
+                    <description>AGC reset interval in seconds (firmware rounds to multiple of 4). CLI: set agc.reset.</description>
+                    <tags>
+                        <tag><tag>component</tag><value>config</value></tag>
+                        <tag><tag>group</tag><value>routing</value></tag>
+                    </tags>
+                </item>
+
+                <item>
+                    <uuid>11000052000000000000000000000013</uuid>
+                    <name>Config: Multi-ACK</name>
+                    <type>SNMPV2</type>
+                    <snmp_oid>.1.3.6.1.4.1.62911.1.5.2.13.0</snmp_oid>
+                    <key>meshcore.cfg.routing.multiack</key>
+                    <delay>10m</delay>
+                    <history>2w</history>
+                    <trends>0</trends>
+                    <value_type>UNSIGNED</value_type>
+                    <description>Multiple ACK transmission. 0=off, 1=on. CLI: set multiack.</description>
+                    <tags>
+                        <tag><tag>component</tag><value>config</value></tag>
+                        <tag><tag>group</tag><value>routing</value></tag>
+                    </tags>
+                </item>
+
+                <item>
+                    <uuid>11000052000000000000000000000014</uuid>
+                    <name>Config: Flood Advert Interval</name>
+                    <type>SNMPV2</type>
+                    <snmp_oid>.1.3.6.1.4.1.62911.1.5.2.14.0</snmp_oid>
+                    <key>meshcore.cfg.routing.advert.flood.hrs</key>
+                    <delay>10m</delay>
+                    <history>2w</history>
+                    <trends>0</trends>
+                    <value_type>UNSIGNED</value_type>
+                    <units>h</units>
+                    <description>Flood advertisement interval in hours (0=disabled, or 3-168). CLI: set advert.flood.</description>
+                    <tags>
+                        <tag><tag>component</tag><value>config</value></tag>
+                        <tag><tag>group</tag><value>routing</value></tag>
+                    </tags>
+                </item>
+
+                <item>
+                    <uuid>11000052000000000000000000000015</uuid>
+                    <name>Config: Local Advert Interval</name>
+                    <type>SNMPV2</type>
+                    <snmp_oid>.1.3.6.1.4.1.62911.1.5.2.15.0</snmp_oid>
+                    <key>meshcore.cfg.routing.advert.interval.mins</key>
+                    <delay>10m</delay>
+                    <history>2w</history>
+                    <trends>0</trends>
+                    <value_type>UNSIGNED</value_type>
+                    <units>m</units>
+                    <description>Local advert interval in minutes (0=disabled, or 60-240, rounded to multiple of 2). CLI: set advert.interval.</description>
+                    <tags>
+                        <tag><tag>component</tag><value>config</value></tag>
+                        <tag><tag>group</tag><value>routing</value></tag>
+                    </tags>
+                </item>
+
+                <!-- ======================================================== -->
+                <!-- GROUP 5.3: control.system  1.3.6.1.4.1.62911.1.5.3.x.0  -->
+                <!-- ======================================================== -->
+
+                <item>
+                    <uuid>11000053000000000000000000000001</uuid>
+                    <name>Config: Node Name (writable)</name>
+                    <type>SNMPV2</type>
+                    <snmp_oid>.1.3.6.1.4.1.62911.1.5.3.1.0</snmp_oid>
+                    <key>meshcore.cfg.sys.name</key>
+                    <delay>1h</delay>
+                    <history>2w</history>
+                    <trends>0</trends>
+                    <value_type>TEXT</value_type>
+                    <description>Node name (read-write). CLI: set name.</description>
+                    <tags>
+                        <tag><tag>component</tag><value>config</value></tag>
+                        <tag><tag>group</tag><value>system</value></tag>
+                    </tags>
+                </item>
+
+                <item>
+                    <uuid>11000053000000000000000000000002</uuid>
+                    <name>Config: Latitude</name>
+                    <type>SNMPV2</type>
+                    <snmp_oid>.1.3.6.1.4.1.62911.1.5.3.2.0</snmp_oid>
+                    <key>meshcore.cfg.sys.lat</key>
+                    <delay>1h</delay>
+                    <history>2w</history>
+                    <trends>90d</trends>
+                    <value_type>FLOAT</value_type>
+                    <units>°</units>
+                    <description>Latitude in decimal degrees (signed ASCII). Example: 51.500000. CLI: set lat.</description>
+                    <tags>
+                        <tag><tag>component</tag><value>config</value></tag>
+                        <tag><tag>group</tag><value>system</value></tag>
+                    </tags>
+                </item>
+
+                <item>
+                    <uuid>11000053000000000000000000000003</uuid>
+                    <name>Config: Longitude</name>
+                    <type>SNMPV2</type>
+                    <snmp_oid>.1.3.6.1.4.1.62911.1.5.3.3.0</snmp_oid>
+                    <key>meshcore.cfg.sys.lon</key>
+                    <delay>1h</delay>
+                    <history>2w</history>
+                    <trends>90d</trends>
+                    <value_type>FLOAT</value_type>
+                    <units>°</units>
+                    <description>Longitude in decimal degrees (signed ASCII). Example: -0.125000. CLI: set lon.</description>
+                    <tags>
+                        <tag><tag>component</tag><value>config</value></tag>
+                        <tag><tag>group</tag><value>system</value></tag>
+                    </tags>
+                </item>
+
+                <item>
+                    <uuid>11000053000000000000000000000004</uuid>
+                    <name>Config: Owner Info</name>
+                    <type>SNMPV2</type>
+                    <snmp_oid>.1.3.6.1.4.1.62911.1.5.3.4.0</snmp_oid>
+                    <key>meshcore.cfg.sys.ownerinfo</key>
+                    <delay>1h</delay>
+                    <history>2w</history>
+                    <trends>0</trends>
+                    <value_type>TEXT</value_type>
+                    <description>Owner/contact info string. Pipe character | = newline. CLI: set owner.</description>
+                    <tags>
+                        <tag><tag>component</tag><value>config</value></tag>
+                        <tag><tag>group</tag><value>system</value></tag>
+                    </tags>
+                </item>
+
+                <item>
+                    <uuid>11000053000000000000000000000007</uuid>
+                    <name>Config: Allow Read-Only Clients</name>
+                    <type>SNMPV2</type>
+                    <snmp_oid>.1.3.6.1.4.1.62911.1.5.3.7.0</snmp_oid>
+                    <key>meshcore.cfg.sys.allow.readonly</key>
+                    <delay>10m</delay>
+                    <history>2w</history>
+                    <trends>0</trends>
+                    <value_type>UNSIGNED</value_type>
+                    <description>Allow unauthenticated read-only access. 0=off, 1=on. room_server only. CLI: set allow.readonly.</description>
+                    <tags>
+                        <tag><tag>component</tag><value>config</value></tag>
+                        <tag><tag>group</tag><value>system</value></tag>
+                    </tags>
+                </item>
+
+                <item>
+                    <uuid>11000053000000000000000000000008</uuid>
+                    <name>Config: ADC Multiplier</name>
+                    <type>SNMPV2</type>
+                    <snmp_oid>.1.3.6.1.4.1.62911.1.5.3.8.0</snmp_oid>
+                    <key>meshcore.cfg.sys.adc.mult</key>
+                    <delay>1h</delay>
+                    <history>2w</history>
+                    <trends>0</trends>
+                    <value_type>FLOAT</value_type>
+                    <description>ADC voltage multiplier (decimal ASCII). 0=board default. Example: 1.702. CLI: set adc.mult.</description>
+                    <tags>
+                        <tag><tag>component</tag><value>config</value></tag>
+                        <tag><tag>group</tag><value>system</value></tag>
+                    </tags>
+                </item>
+
+                <!-- ======================================================== -->
+                <!-- GROUP 5.4: control.bridgeCfg  1.3.6.1.4.1.62911.1.5.4.x.0 -->
+                <!-- ======================================================== -->
+
+                <item>
+                    <uuid>11000054000000000000000000000001</uuid>
+                    <name>Config: Bridge Enabled</name>
+                    <type>SNMPV2</type>
+                    <snmp_oid>.1.3.6.1.4.1.62911.1.5.4.1.0</snmp_oid>
+                    <key>meshcore.cfg.bridge.enabled</key>
+                    <delay>10m</delay>
+                    <history>2w</history>
+                    <trends>0</trends>
+                    <value_type>UNSIGNED</value_type>
+                    <description>Bridge enabled. 0=off, 1=on. CLI: set bridge.enabled.</description>
+                    <tags>
+                        <tag><tag>component</tag><value>config</value></tag>
+                        <tag><tag>group</tag><value>bridgeCfg</value></tag>
+                    </tags>
+                </item>
+
+                <item>
+                    <uuid>11000054000000000000000000000002</uuid>
+                    <name>Config: Bridge Delay</name>
+                    <type>SNMPV2</type>
+                    <snmp_oid>.1.3.6.1.4.1.62911.1.5.4.2.0</snmp_oid>
+                    <key>meshcore.cfg.bridge.delay.ms</key>
+                    <delay>10m</delay>
+                    <history>2w</history>
+                    <trends>0</trends>
+                    <value_type>UNSIGNED</value_type>
+                    <units>ms</units>
+                    <description>Bridge forwarding delay in ms (0-10000). CLI: set bridge.delay.</description>
+                    <tags>
+                        <tag><tag>component</tag><value>config</value></tag>
+                        <tag><tag>group</tag><value>bridgeCfg</value></tag>
+                    </tags>
+                </item>
+
+                <item>
+                    <uuid>11000054000000000000000000000003</uuid>
+                    <name>Config: Bridge Source</name>
+                    <type>SNMPV2</type>
+                    <snmp_oid>.1.3.6.1.4.1.62911.1.5.4.3.0</snmp_oid>
+                    <key>meshcore.cfg.bridge.source</key>
+                    <delay>10m</delay>
+                    <history>2w</history>
+                    <trends>0</trends>
+                    <value_type>UNSIGNED</value_type>
+                    <description>Bridge packet source: 0=logTx, 1=logRx. CLI: set bridge.source.</description>
+                    <tags>
+                        <tag><tag>component</tag><value>config</value></tag>
+                        <tag><tag>group</tag><value>bridgeCfg</value></tag>
+                    </tags>
+                </item>
+
+                <item>
+                    <uuid>11000054000000000000000000000004</uuid>
+                    <name>Config: MQTT Server</name>
+                    <type>SNMPV2</type>
+                    <snmp_oid>.1.3.6.1.4.1.62911.1.5.4.4.0</snmp_oid>
+                    <key>meshcore.cfg.bridge.mqtt.server</key>
+                    <delay>1h</delay>
+                    <history>2w</history>
+                    <trends>0</trends>
+                    <value_type>TEXT</value_type>
+                    <description>MQTT broker hostname or IP. CLI: set bridge.mqtt.server.</description>
+                    <tags>
+                        <tag><tag>component</tag><value>config</value></tag>
+                        <tag><tag>group</tag><value>bridgeCfg</value></tag>
+                    </tags>
+                </item>
+
+                <item>
+                    <uuid>11000054000000000000000000000005</uuid>
+                    <name>Config: MQTT Port</name>
+                    <type>SNMPV2</type>
+                    <snmp_oid>.1.3.6.1.4.1.62911.1.5.4.5.0</snmp_oid>
+                    <key>meshcore.cfg.bridge.mqtt.port</key>
+                    <delay>1h</delay>
+                    <history>2w</history>
+                    <trends>0</trends>
+                    <value_type>UNSIGNED</value_type>
+                    <description>MQTT broker port (0=default 1883). CLI: set bridge.mqtt.port.</description>
+                    <tags>
+                        <tag><tag>component</tag><value>config</value></tag>
+                        <tag><tag>group</tag><value>bridgeCfg</value></tag>
+                    </tags>
+                </item>
+
+                <item>
+                    <uuid>11000054000000000000000000000006</uuid>
+                    <name>Config: MQTT Topic</name>
+                    <type>SNMPV2</type>
+                    <snmp_oid>.1.3.6.1.4.1.62911.1.5.4.6.0</snmp_oid>
+                    <key>meshcore.cfg.bridge.mqtt.topic</key>
+                    <delay>1h</delay>
+                    <history>2w</history>
+                    <trends>0</trends>
+                    <value_type>TEXT</value_type>
+                    <description>MQTT topic string. CLI: set bridge.mqtt.topic.</description>
+                    <tags>
+                        <tag><tag>component</tag><value>config</value></tag>
+                        <tag><tag>group</tag><value>bridgeCfg</value></tag>
+                    </tags>
+                </item>
+
+                <item>
+                    <uuid>11000054000000000000000000000007</uuid>
+                    <name>Config: MQTT Username</name>
+                    <type>SNMPV2</type>
+                    <snmp_oid>.1.3.6.1.4.1.62911.1.5.4.7.0</snmp_oid>
+                    <key>meshcore.cfg.bridge.mqtt.user</key>
+                    <delay>1h</delay>
+                    <history>2w</history>
+                    <trends>0</trends>
+                    <value_type>TEXT</value_type>
+                    <description>MQTT username. CLI: set bridge.mqtt.user.</description>
+                    <tags>
+                        <tag><tag>component</tag><value>config</value></tag>
+                        <tag><tag>group</tag><value>bridgeCfg</value></tag>
+                    </tags>
+                </item>
+
+                <item>
+                    <uuid>11000054000000000000000000000009</uuid>
+                    <name>Config: MQTT Autostart</name>
+                    <type>SNMPV2</type>
+                    <snmp_oid>.1.3.6.1.4.1.62911.1.5.4.9.0</snmp_oid>
+                    <key>meshcore.cfg.bridge.mqtt.autostart</key>
+                    <delay>1h</delay>
+                    <history>2w</history>
+                    <trends>0</trends>
+                    <value_type>UNSIGNED</value_type>
+                    <description>MQTT autostart on boot. 0=off, 1=on. CLI: set bridge.autostart.</description>
+                    <tags>
+                        <tag><tag>component</tag><value>config</value></tag>
+                        <tag><tag>group</tag><value>bridgeCfg</value></tag>
+                    </tags>
+                </item>
+
+            </items>
+
+            <!-- ============================================================ -->
+            <!-- TRIGGERS                                                       -->
+            <!-- ============================================================ -->
+            <triggers>
+
+                <trigger>
+                    <uuid>21000000000000000000000000000001</uuid>
+                    <expression>nodata(/Template SNMP MeshCore/meshcore.sysinfo.uptime,10m)=1</expression>
+                    <name>Node unreachable: no SNMP response for 10m</name>
+                    <priority>HIGH</priority>
+                    <description>No SNMP data received for 10 minutes. Node may be offline or SNMP agent stopped.</description>
+                    <tags>
+                        <tag><tag>scope</tag><value>availability</value></tag>
+                        <tag><tag>component</tag><value>system</value></tag>
+                    </tags>
+                </trigger>
+
+                <trigger>
+                    <uuid>21000000000000000000000000000002</uuid>
+                    <expression>last(/Template SNMP MeshCore/meshcore.sysinfo.uptime)&lt;600 and last(/Template SNMP MeshCore/meshcore.sysinfo.uptime)&gt;0</expression>
+                    <name>Node rebooted: uptime under 10 minutes</name>
+                    <priority>WARNING</priority>
+                    <description>Node uptime is less than 10 minutes, indicating a recent reboot or power cycle.</description>
+                    <manual_close>YES</manual_close>
+                    <tags>
+                        <tag><tag>scope</tag><value>availability</value></tag>
+                        <tag><tag>component</tag><value>system</value></tag>
+                    </tags>
+                </trigger>
+
+                <trigger>
+                    <uuid>21000000000000000000000000000003</uuid>
+                    <expression>last(/Template SNMP MeshCore/meshcore.sysinfo.batt.v)&gt;0 and last(/Template SNMP MeshCore/meshcore.sysinfo.batt.v)&lt;{$BATT_CRIT_V}</expression>
+                    <name>Battery voltage critical: below {$BATT_CRIT_V} V</name>
+                    <priority>HIGH</priority>
+                    <description>Battery voltage is critically low. Node may shut down soon.</description>
+                    <tags>
+                        <tag><tag>scope</tag><value>capacity</value></tag>
+                        <tag><tag>component</tag><value>system</value></tag>
+                    </tags>
+                </trigger>
+
+                <trigger>
+                    <uuid>21000000000000000000000000000004</uuid>
+                    <expression>last(/Template SNMP MeshCore/meshcore.sysinfo.batt.v)&gt;0 and last(/Template SNMP MeshCore/meshcore.sysinfo.batt.v)&lt;{$BATT_WARN_V}</expression>
+                    <name>Battery voltage low: below {$BATT_WARN_V} V</name>
+                    <priority>WARNING</priority>
+                    <description>Battery voltage is getting low.</description>
+                    <dependencies>
+                        <dependency>
+                            <name>Battery voltage critical: below {$BATT_CRIT_V} V</name>
+                            <expression>last(/Template SNMP MeshCore/meshcore.sysinfo.batt.v)&gt;0 and last(/Template SNMP MeshCore/meshcore.sysinfo.batt.v)&lt;{$BATT_CRIT_V}</expression>
+                        </dependency>
+                    </dependencies>
+                    <tags>
+                        <tag><tag>scope</tag><value>capacity</value></tag>
+                        <tag><tag>component</tag><value>system</value></tag>
+                    </tags>
+                </trigger>
+
+                <trigger>
+                    <uuid>21000000000000000000000000000005</uuid>
+                    <expression>last(/Template SNMP MeshCore/meshcore.radio.noisefloor.dbm)&gt;{$NOISE_WARN_DBM}</expression>
+                    <name>Elevated noise floor: above {$NOISE_WARN_DBM} dBm</name>
+                    <priority>WARNING</priority>
+                    <description>Noise floor is elevated, indicating RF interference. May degrade receive sensitivity and link quality.</description>
+                    <tags>
+                        <tag><tag>scope</tag><value>performance</value></tag>
+                        <tag><tag>component</tag><value>radio</value></tag>
+                    </tags>
+                </trigger>
+
+                <trigger>
+                    <uuid>21000000000000000000000000000006</uuid>
+                    <expression>last(/Template SNMP MeshCore/meshcore.radio.txbudget.s)=0</expression>
+                    <name>TX budget exhausted: duty-cycle limit reached</name>
+                    <priority>WARNING</priority>
+                    <description>Remaining TX budget is zero. Node is deferring all transmissions. May indicate unusually high traffic load.</description>
+                    <tags>
+                        <tag><tag>scope</tag><value>capacity</value></tag>
+                        <tag><tag>component</tag><value>radio</value></tag>
+                    </tags>
+                </trigger>
+
+                <trigger>
+                    <uuid>21000000000000000000000000000007</uuid>
+                    <expression>last(/Template SNMP MeshCore/meshcore.radio.airtime.util.pct)&gt;{$AIRTIME_WARN_PCT}</expression>
+                    <name>High airtime utilization: above {$AIRTIME_WARN_PCT}%</name>
+                    <priority>WARNING</priority>
+                    <description>Live airtime utilization is high. Node may approach duty-cycle limit.</description>
+                    <tags>
+                        <tag><tag>scope</tag><value>performance</value></tag>
+                        <tag><tag>component</tag><value>radio</value></tag>
+                    </tags>
+                </trigger>
+
+                <trigger>
+                    <uuid>21000000000000000000000000000008</uuid>
+                    <expression>change(/Template SNMP MeshCore/meshcore.radio.pkt.recv.errors)&gt;{$RX_ERR_DELTA_WARN}</expression>
+                    <name>Radio RX errors increasing rapidly</name>
+                    <priority>WARNING</priority>
+                    <description>Radio RX error count is increasing rapidly. Possible causes: RF interference, channel misconfiguration (wrong freq/BW/SF), or hardware fault.</description>
+                    <tags>
+                        <tag><tag>scope</tag><value>performance</value></tag>
+                        <tag><tag>component</tag><value>radio</value></tag>
+                    </tags>
+                </trigger>
+
+                <trigger>
+                    <uuid>21000000000000000000000000000009</uuid>
+                    <expression>last(/Template SNMP MeshCore/meshcore.err.flags)&gt;0</expression>
+                    <name>Non-zero internal error flags</name>
+                    <priority>AVERAGE</priority>
+                    <description>Internal error flags bitmask is non-zero. Correlate with src/Dispatcher.h for the running firmware version for bit definitions.</description>
+                    <tags>
+                        <tag><tag>scope</tag><value>availability</value></tag>
+                        <tag><tag>component</tag><value>packets</value></tag>
+                    </tags>
+                </trigger>
+
+                <trigger>
+                    <uuid>21000000000000000000000000000010</uuid>
+                    <expression>last(/Template SNMP MeshCore/meshcore.pkt.queue.outbound)&gt;{$QUEUE_WARN_LEN}</expression>
+                    <name>Outbound TX queue congested: above {$QUEUE_WARN_LEN} packets</name>
+                    <priority>WARNING</priority>
+                    <description>Outbound TX queue is building up. Possible congestion or duty-cycle limiting.</description>
+                    <tags>
+                        <tag><tag>scope</tag><value>capacity</value></tag>
+                        <tag><tag>component</tag><value>packets</value></tag>
+                    </tags>
+                </trigger>
+
+                <trigger>
+                    <uuid>21000000000000000000000000000011</uuid>
+                    <expression>change(/Template SNMP MeshCore/meshcore.bridge.reconnects)&gt;{$BRIDGE_RECONN_WARN}</expression>
+                    <name>Bridge reconnecting frequently</name>
+                    <priority>WARNING</priority>
+                    <description>MQTT bridge is reconnecting frequently. Indicates unstable broker connection or network path to broker.</description>
+                    <tags>
+                        <tag><tag>scope</tag><value>availability</value></tag>
+                        <tag><tag>component</tag><value>bridge</value></tag>
+                    </tags>
+                </trigger>
+
+            </triggers>
+
+            <!-- ============================================================ -->
+            <!-- MACROS                                                         -->
+            <!-- ============================================================ -->
+            <macros>
+                <macro>
+                    <macro>{$SNMP_COMMUNITY}</macro>
+                    <value>public</value>
+                    <description>SNMP read community string</description>
+                </macro>
+                <macro>
+                    <macro>{$SNMP_PORT}</macro>
+                    <value>161</value>
+                    <description>SNMP UDP port</description>
+                </macro>
+                <macro>
+                    <macro>{$BATT_WARN_V}</macro>
+                    <value>3.5</value>
+                    <description>Battery low warning threshold in Volts</description>
+                </macro>
+                <macro>
+                    <macro>{$BATT_CRIT_V}</macro>
+                    <value>3.2</value>
+                    <description>Battery critical threshold in Volts</description>
+                </macro>
+                <macro>
+                    <macro>{$NOISE_WARN_DBM}</macro>
+                    <value>-90</value>
+                    <description>Noise floor warning threshold in dBm (less negative = more noise)</description>
+                </macro>
+                <macro>
+                    <macro>{$AIRTIME_WARN_PCT}</macro>
+                    <value>80</value>
+                    <description>Airtime utilization warning threshold percent</description>
+                </macro>
+                <macro>
+                    <macro>{$RX_ERR_DELTA_WARN}</macro>
+                    <value>10</value>
+                    <description>RX error change per poll before triggering warning</description>
+                </macro>
+                <macro>
+                    <macro>{$QUEUE_WARN_LEN}</macro>
+                    <value>5</value>
+                    <description>Outbound queue length warning threshold (packets)</description>
+                </macro>
+                <macro>
+                    <macro>{$BRIDGE_RECONN_WARN}</macro>
+                    <value>3</value>
+                    <description>Bridge reconnect change per poll before triggering warning</description>
+                </macro>
+            </macros>
+
+        </template>
+    </templates>
+</zabbix_export>

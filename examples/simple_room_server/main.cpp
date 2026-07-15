@@ -343,6 +343,42 @@ void setup() {
   fs = &ArduLinuxFS;
   IdentityStore store(ArduLinuxFS, "/identity");
   store.begin();
+#elif defined(ARDULINUX_PLATFORM)
+  fs = &ArduLinuxFS;
+  IdentityStore store(ArduLinuxFS, "/identity");
+  store.begin();
+#elif defined(ARDULINUX_PLATFORM)
+  fs = &ArduLinuxFS;
+  IdentityStore store(ArduLinuxFS, "/identity");
+  store.begin();
+#elif defined(ARDULINUX_PLATFORM)
+  fs = &ArduLinuxFS;
+  IdentityStore store(ArduLinuxFS, "/identity");
+  store.begin();
+#elif defined(ARDULINUX_PLATFORM)
+  fs = &ArduLinuxFS;
+  IdentityStore store(ArduLinuxFS, "/identity");
+  store.begin();
+#elif defined(ARDULINUX_PLATFORM)
+  fs = &ArduLinuxFS;
+  IdentityStore store(ArduLinuxFS, "/identity");
+  store.begin();
+#elif defined(ARDULINUX_PLATFORM)
+  fs = &ArduLinuxFS;
+  IdentityStore store(ArduLinuxFS, "/identity");
+  store.begin();
+#elif defined(ARDULINUX_PLATFORM)
+  fs = &ArduLinuxFS;
+  IdentityStore store(ArduLinuxFS, "/identity");
+  store.begin();
+#elif defined(ARDULINUX_PLATFORM)
+  fs = &ArduLinuxFS;
+  IdentityStore store(ArduLinuxFS, "/identity");
+  store.begin();
+#elif defined(ARDULINUX_PLATFORM)
+  fs = &ArduLinuxFS;
+  IdentityStore store(ArduLinuxFS, "/identity");
+  store.begin();
 #else
   #error "need to define filesystem"
 #endif
