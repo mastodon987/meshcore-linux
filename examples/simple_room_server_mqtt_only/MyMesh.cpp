@@ -718,6 +718,17 @@ void MyMesh::begin(FILESYSTEM *fs) {
   _bridge.begin();   // reads _prefs.mqtt_autostart; connects now if set
 #endif // WITH_MQTT_BRIDGE && RADIO_NONE
 
+#if defined(ARDULINUX_PLATFORM) && defined(WITH_TCP_COMPANION)
+  tcp_companion.begin(TCP_COMPANION_PORT);
+#endif
+#if defined(ARDULINUX_PLATFORM) && defined(WITH_MC_CONSOLE)
+  {
+    char sock_path[128];
+    mc_console_default_socket_path(MC_CONSOLE_INSTANCE, sock_path, sizeof(sock_path));
+    mc_console.begin(sock_path, _prefs.node_name);
+  }
+#endif
+
   acl.load(_fs, self_id);
   region_map.load(_fs);
 
@@ -992,6 +1003,55 @@ void MyMesh::loop() {
 
 #if defined(WITH_MQTT_BRIDGE)
   _bridge.loop();   // poll MQTT client: read incoming bytes, send keepalive PINGs
+#endif
+
+#if defined(ARDULINUX_PLATFORM) && defined(WITH_TCP_COMPANION)
+  {
+    uint8_t frame[MAX_FRAME_SIZE];
+    size_t len = tcp_companion.checkRecvFrame(frame);
+    if (len > 0) {
+      if (frame[0] == 22) {  // CMD_DEVICE_QUERY
+        uint8_t resp[4];
+        resp[0] = 13; resp[1] = 0; resp[2] = 0; resp[3] = 0;
+        tcp_companion.writeFrame(resp, 4);
+      } else if (frame[0] == 1 && len >= 8) {  // CMD_APP_START
+        uint8_t resp[8 + PUB_KEY_SIZE + 32];
+        int i = 0;
+        resp[i++] = 5; // RESP_CODE_SELF_INFO
+        resp[i++] = 3; // ADV_TYPE_ROOM
+        resp[i++] = _prefs.tx_power_dbm;
+        resp[i++] = 22;
+        memcpy(&resp[i], self_id.pub_key, PUB_KEY_SIZE); i += PUB_KEY_SIZE;
+        int32_t lat = (int32_t)(_prefs.node_lat * 1000000.0);
+        int32_t lon = (int32_t)(_prefs.node_lon * 1000000.0);
+        memcpy(&resp[i], &lat, 4); i += 4;
+        memcpy(&resp[i], &lon, 4); i += 4;
+        int nlen = strlen(_prefs.node_name);
+        memcpy(&resp[i], _prefs.node_name, nlen); i += nlen;
+        tcp_companion.writeFrame(resp, i);
+      } else if (len > 1 && frame[len-1] == 0) {
+        char reply[160];
+        handleCommand(0, (char*)frame, reply);
+        if (reply[0]) {
+          uint8_t resp[164];
+          resp[0] = 0;
+          int rlen = strlen(reply);
+          memcpy(&resp[1], reply, rlen);
+          tcp_companion.writeFrame(resp, 1 + rlen);
+        }
+      }
+    }
+  }
+#endif
+#if defined(ARDULINUX_PLATFORM) && defined(WITH_MC_CONSOLE)
+  {
+    char cmd[160];
+    if (mc_console.poll(cmd, sizeof(cmd))) {
+      char reply[160];
+      handleCommand(0, cmd, reply);
+      mc_console.sendReply(reply[0] ? reply : "OK");
+    }
+  }
 #endif
 
   if (millisHasNowPassed(next_push) && acl.getNumClients() > 0) {

@@ -19,12 +19,18 @@ const char *ardulinuxAppBugAddress  = "https://github.com/meshcore-dev/MeshCore"
 // user requested instead of the previously hardcoded path.
 const char *meshcoredConfPath = DEFAULT_MESHCORED_CONF;
 
+// Path to the console Unix socket, overridable via -s/--socket.
+// NULL means "use the default derived from MC_CONSOLE_INSTANCE".
+// Declared extern in LinuxBoard.h so MyMesh.cpp can read it.
+const char *meshcoredConsoleSocketPath = NULL;
+
 // ── -c/--conf command-line option ───────────────────────────────────────
 // Registered with the ardulinux runtime's argp parser via
 // ardulinuxAddArguments() below, so it shows up alongside the built-in
 // --erase/--fsdir/--help/--usage/--version options in `meshcored --help`.
 static struct argp_option meshcored_options[] = {
-  {"conf", 'c', "FILE", 0, "Path to the meshcored config file (default: " DEFAULT_MESHCORED_CONF ")"},
+  {"conf",   'c', "FILE", 0, "Path to the meshcored config file (default: " DEFAULT_MESHCORED_CONF ")"},
+  {"socket", 's', "PATH", 0, "Unix socket path for the mcore console (default: /tmp/meshcored-<instance>.sock)"},
   {0}
 };
 
@@ -32,6 +38,14 @@ static error_t meshcored_parse_opt(int key, char *arg, struct argp_state *state)
   switch (key) {
   case 'c':
     meshcoredConfPath = arg;
+    break;
+  case 's':
+    meshcoredConsoleSocketPath = arg;
+    break;
+  case ARGP_KEY_ARG:
+    // Swallow unexpected positional arguments (e.g. the word "help" that
+    // leaks through when the ardulinux runtime handles --help internally)
+    // rather than letting them reach the mesh command handler.
     break;
   default:
     return ARGP_ERR_UNKNOWN;

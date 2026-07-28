@@ -31,6 +31,15 @@
   #define WITH_BRIDGE
 #endif
 
+#ifdef ARDULINUX_PLATFORM
+#ifdef WITH_TCP_COMPANION
+#include "helpers/linux/LinuxTCPCompanionInterface.h"
+#endif
+#ifdef WITH_MC_CONSOLE
+#include "helpers/linux/LinuxConsoleServer.h"
+#endif
+#endif
+
 /* ------------------------------ Config -------------------------------- */
 
 #ifndef FIRMWARE_BUILD_DATE
@@ -132,6 +141,12 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks {
 #if defined(WITH_MQTT_BRIDGE)
   StaticPoolPacketManager* _packetMgr;
   MQTTBridge _bridge;
+#endif
+#if defined(ARDULINUX_PLATFORM) && defined(WITH_TCP_COMPANION)
+  LinuxTCPCompanionInterface tcp_companion;
+#endif
+#if defined(ARDULINUX_PLATFORM) && defined(WITH_MC_CONSOLE)
+  LinuxConsoleServer mc_console;
 #endif
 
   void addPost(ClientInfo* client, const char* postData);

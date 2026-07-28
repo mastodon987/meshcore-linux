@@ -1,3 +1,12 @@
+## Added support for Android official app TCP/IP protocol for Linux variant repeater management.
+
+Not all features will work, because Android app is designed for companions. What is working is noise floor scan, discover neighbors, console and few other things. Messaging, channels and contacts are unsupported for Linux meshcored over TCP/IP.
+
+## Added local console for management
+
+client app mcore for local management. Because multiple instances can be running then for connecting to correct instance is used linux sockets. those sockets should be in /run/meshcored directory.
+For more info see client console app here: https://github.com/mastodon987/mcore_console
+
 ## Added SNMP support
 
 Base OID: .1.3.6.1.4.1.62911.1

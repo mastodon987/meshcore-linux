@@ -1,5 +1,11 @@
 #include "MyMesh.h"
 #include <algorithm>
+#ifdef ARDULINUX_PLATFORM
+#include <unistd.h>
+#include <cstdio>
+#include <vector>
+#include <string>
+#endif
 
 /* ------------------------------ Config -------------------------------- */
 
@@ -638,6 +644,19 @@ void MyMesh::onAdvertRecv(mesh::Packet *packet, const mesh::Identity &id, uint32
                           const uint8_t *app_data, size_t app_data_len) {
   mesh::Mesh::onAdvertRecv(packet, id, timestamp, app_data, app_data_len); // chain to super impl
 
+#if defined(ARDULINUX_PLATFORM) && defined(WITH_TCP_COMPANION)
+  // Live-notify the companion app of every advert heard, per protocol spec
+  // (PUSH_CODE_ADVERT). This is what the app's RX/packet log is very
+  // likely waiting on -- it wasn't previously wired up at all, which would
+  // explain it showing nothing regardless of traffic actually being heard.
+  if (tcp_companion.isConnected()) {
+    uint8_t push[1 + PUB_KEY_SIZE];
+    push[0] = 0x80; // PUSH_CODE_ADVERT
+    memcpy(&push[1], id.pub_key, PUB_KEY_SIZE);
+    tcp_companion.writeFrameToAll(push, sizeof(push));
+  }
+#endif
+
   // if this a zero hop advert (and not via 'Share'), add it to neighbours
   if (packet->getPathHashCount() == 0 && !isShare(packet)) {
     AdvertDataParser parser(app_data, app_data_len);
@@ -826,6 +845,23 @@ void MyMesh::onControlDataRecv(mesh::Packet* packet) {
       return;
     }
     putNeighbour(id, rtc_clock.getCurrentTime(), packet->getSNR());
+
+#if defined(ARDULINUX_PLATFORM) && defined(WITH_TCP_COMPANION)
+    // Forward the raw response to the connected app too, so "Discover
+    // Nearby Nodes" / "Discover Regions" actually populate live instead of
+    // only updating our internal neighbours[] table.
+    if (tcp_companion.isConnected()) {
+      uint8_t push[4 + MAX_PACKET_PAYLOAD];
+      push[0] = 0x8E; // PUSH_CODE_CONTROL_DATA
+      push[1] = (uint8_t)packet->_snr;
+      push[2] = (uint8_t)radio_driver.getLastRSSI();
+      push[3] = 0; // path_len (always 0 for zero-hop discover replies)
+      size_t plen = packet->payload_len;
+      if (plen > sizeof(push) - 4) plen = sizeof(push) - 4;
+      memcpy(&push[4], packet->payload, plen);
+      tcp_companion.writeFrameToAll(push, 4 + plen);
+    }
+#endif
   }
 }
 
@@ -1012,6 +1048,22 @@ void MyMesh::begin(FILESYSTEM *fs) {
 
 #ifdef WITH_SNMP
   snmp_agent.begin();
+#endif
+
+#if defined(ARDULINUX_PLATFORM) && defined(WITH_TCP_COMPANION)
+  tcp_companion.begin(TCP_COMPANION_PORT);
+#endif
+#if defined(ARDULINUX_PLATFORM) && defined(WITH_MC_CONSOLE)
+  {
+    char sock_path[128];
+    if (meshcoredConsoleSocketPath && meshcoredConsoleSocketPath[0]) {
+      strncpy(sock_path, meshcoredConsoleSocketPath, sizeof(sock_path) - 1);
+      sock_path[sizeof(sock_path) - 1] = '\0';
+    } else {
+      mc_console_default_socket_path(MC_CONSOLE_INSTANCE, sock_path, sizeof(sock_path));
+    }
+    mc_console.begin(sock_path, _prefs.node_name);
+  }
 #endif
 
   radio_driver.setParams(_prefs.freq, _prefs.bw, _prefs.sf, _prefs.cr);
@@ -1324,6 +1376,365 @@ void MyMesh::loop() {
 #endif
 #ifdef WITH_SNMP
   snmp_agent.loop();
+#endif
+
+#if defined(ARDULINUX_PLATFORM) && defined(WITH_TCP_COMPANION)
+  // Poll the TCP companion interface (MeshCore Android app protocol).
+  // Repeater/room-server roles don't implement the full companion-radio
+  // binary protocol (that lives in examples/companion_radio).  Here we
+  // accept the connection and answer the app's handshake sequence:
+  //   CMD_APP_START(1)     -> RESP_CODE_SELF_INFO(5)
+  //   CMD_DEVICE_QUERY(22) -> RESP_CODE_DEVICE_INFO(13)
+  //   CMD_GET_CONTACTS(4)  -> RESP_CODE_CONTACTS_START(2), RESP_CODE_END_OF_CONTACTS(4)
+  // then forward any CLI-data frames through handleCommand(), the same
+  // path the serial/SNMP console uses.
+  //
+  // Frame layouts below match docs/companion_protocol.md. Both responses
+  // MUST be sent at full length -- the Android app reads fixed byte
+  // offsets, and a short frame here is what was causing the app to hang
+  // forever on "Connecting...".
+  {
+    uint8_t frame[MAX_FRAME_SIZE];
+    size_t len = tcp_companion.checkRecvFrame(frame);
+    if (len > 0) {
+//      DEBUG Android app
+//      printf("mc_companion: RX cmd=%u len=%u bytes:", (unsigned)frame[0], (unsigned)len);
+      for (size_t k = 0; k < len; k++) printf(" %02X", frame[k]);
+      printf("\n");
+      fflush(stdout);
+      // CMD_APP_START (1) -- app connected, send full self-info
+      if (frame[0] == 1) {
+        uint8_t resp[58 + sizeof(_prefs.node_name)];
+        int i = 0;
+        resp[i++] = 5;  // RESP_CODE_SELF_INFO
+#ifdef MC_COMPANION_DEBUG_AS_CHAT
+        // TEMPORARY DIAGNOSTIC: report as ADV_TYPE_CHAT (1) instead of
+        // ADV_TYPE_REPEATER (2) to test whether the app's telemetry UI is
+        // gated on node type. Build with -DMC_COMPANION_DEBUG_AS_CHAT to
+        // enable. Remove once confirmed -- this misrepresents the node
+        // type, which will likely affect anything else that depends on it
+        // being correctly identified as a repeater. DO NOT ship this on.
+        resp[i++] = 1;  // ADV_TYPE_CHAT (diagnostic only)
+#else
+        resp[i++] = 2;  // ADV_TYPE_REPEATER
+#endif
+        resp[i++] = (uint8_t)_prefs.tx_power_dbm;
+        resp[i++] = 22; // MAX_LORA_TX_POWER
+        memcpy(&resp[i], self_id.pub_key, PUB_KEY_SIZE);        // bytes 4-35
+        i += PUB_KEY_SIZE;
+        int32_t lat = (int32_t)(_prefs.node_lat * 1000000.0);
+        int32_t lon = (int32_t)(_prefs.node_lon * 1000000.0);
+        memcpy(&resp[i], &lat, 4); i += 4;                      // bytes 36-39
+        memcpy(&resp[i], &lon, 4); i += 4;                      // bytes 40-43
+        resp[i++] = _prefs.multi_acks;                          // byte 44
+        resp[i++] = 0;                                          // byte 45: advert location policy
+        resp[i++] = 0;                                          // byte 46: telemetry mode flags
+        resp[i++] = 0;                                          // byte 47: manual add contacts flag
+        // Per protocol: radio_freq = freq(MHz) * 1000 (kHz-scale uint32),
+        // radio_bw = bandwidth(kHz) * 1000 (Hz-scale uint32). NOTE: these
+        // use DIFFERENT scale factors from each other -- this is not a typo.
+        uint32_t freq_field = (uint32_t)(_prefs.freq * 1000.0);
+        uint32_t bw_field   = (uint32_t)(_prefs.bw   * 1000.0);
+        memcpy(&resp[i], &freq_field, 4); i += 4;               // bytes 48-51
+        memcpy(&resp[i], &bw_field, 4);   i += 4;                // bytes 52-55
+        resp[i++] = _prefs.sf;                                  // byte 56
+        resp[i++] = _prefs.cr;                                  // byte 57
+        int nlen = strlen(_prefs.node_name);                    // bytes 58+
+        memcpy(&resp[i], _prefs.node_name, nlen); i += nlen;
+        tcp_companion.writeFrame(resp, i);
+      }
+      // CMD_SEND_SELF_ADVERT (7) -- optional byte param: 1=flood, 0=zero-hop
+      else if (frame[0] == 7) {
+        bool flood = (len >= 2) && (frame[1] == 1);
+        sendSelfAdvertisement(0, flood);
+        uint8_t resp[1] = { 0 }; // RESP_CODE_OK
+        tcp_companion.writeFrame(resp, 1);
+      }
+      // CMD_SET_ADVERT_LATLON (14) -- update lat/lon used in adverts
+      else if (frame[0] == 14 && len >= 9) {
+        int32_t lat, lon;
+        memcpy(&lat, &frame[1], 4);
+        memcpy(&lon, &frame[5], 4);
+        _prefs.node_lat = lat / 1000000.0;
+        _prefs.node_lon = lon / 1000000.0;
+        savePrefs();
+        uint8_t resp[1] = { 0 }; // RESP_CODE_OK
+        tcp_companion.writeFrame(resp, 1);
+      }
+      // CMD_SEND_TELEMETRY_REQ (39) -- app requesting telemetry. Confirmed
+      // from capture: the app sends this as just 4 bytes (code + 3 bytes,
+      // no target pubkey) over a direct link, meaning "give me MY
+      // telemetry" -- there's no remote-node targeting on this transport.
+      // (Previously this required len>=36 + a pubkey match, which this
+      // short frame never satisfied, so it fell through to the CLI-text
+      // fallback and got misinterpreted as a garbled command.)
+      else if (frame[0] == 39) {
+        bool has_target = (len >= 36);
+        bool is_self = !has_target || (memcmp(&frame[4], self_id.pub_key, PUB_KEY_SIZE) == 0);
+        if (is_self) {
+          telemetry.reset();
+          telemetry.addVoltage(TELEM_CHANNEL_SELF, (float)board.getBattMilliVolts() / 1000.0f);
+          sensors.querySensors(0xFF, telemetry); // local/self request: full permissions
+          float temperature = board.getMCUTemperature();
+          if (!isnan(temperature)) {
+            telemetry.addTemperature(TELEM_CHANNEL_SELF, temperature);
+          }
+          uint8_t tlen = telemetry.getSize();
+          if (tlen > MAX_FRAME_SIZE - 8) tlen = MAX_FRAME_SIZE - 8;
+          uint8_t resp[MAX_FRAME_SIZE];
+          resp[0] = 0x8B; // PUSH_CODE_TELEMETRY_RESPONSE
+          resp[1] = 0;    // reserved
+          memcpy(&resp[2], self_id.pub_key, 6); // pub_key_prefix
+          memcpy(&resp[8], telemetry.getBuffer(), tlen);
+          tcp_companion.writeFrame(resp, 8 + tlen);
+        } else {
+          // Addressed to a remote node -- report as "sent", real reply (if
+          // any) would need a mesh round-trip which isn't implemented here.
+          uint8_t resp[10];
+          resp[0] = 6; // RESP_CODE_SENT
+          resp[1] = 0; // direct
+          memset(&resp[2], 0, 4); // expected_ack_or_tag
+          uint32_t timeout_ms = 5000;
+          memcpy(&resp[6], &timeout_ms, 4);
+          tcp_companion.writeFrame(resp, 10);
+        }
+      }
+      // CMD_DEVICE_QUERY (22) -- app probing for device/hardware info
+      else if (frame[0] == 22) {
+        uint8_t resp[82];
+        memset(resp, 0, sizeof(resp));
+        resp[0] = 13; // RESP_CODE_DEVICE_INFO
+        // NOTE: the app version-gates certain commands (discovery/control-data
+        // among them) off this byte, and shows "unsupported command - please
+        // update your companion firmware" client-side, without even sending
+        // the command, if this is too low. Bumped from 8 -> 10 to unlock the
+        // v9 (client-repeat) and v10 (path-hash-mode) fields below, which the
+        // app expects to be present once it sees version >= their gate.
+        resp[1] = 10; // FIRMWARE_VER_CODE
+        resp[2] = MAX_CLIENTS / 2; // MAX_CONTACTS / 2
+        resp[3] = 0;                // MAX_GROUP_CHANNELS (repeater: none)
+        uint32_t ble_pin = 0;
+        memcpy(&resp[4], &ble_pin, 4);                                // bytes 4-7
+        strncpy((char*)&resp[8], FIRMWARE_BUILD_DATE, 12);             // bytes 8-19
+        strncpy((char*)&resp[20], "MeshCore", 40);                     // bytes 20-59
+        strncpy((char*)&resp[60], FIRMWARE_VERSION, 20);                // bytes 60-79
+        resp[80] = 0; // client repeat (off-grid) mode -- not supported here
+        resp[81] = 0; // path hash mode -- default (1-byte)
+        tcp_companion.writeFrame(resp, sizeof(resp));
+      }
+      // CMD_GET_CONTACTS (4) -- repeater/room-server keeps no contact list;
+      // reply with an immediate empty contacts sync so the app's flow completes.
+      else if (frame[0] == 4) {
+        uint8_t start_resp[5];
+        start_resp[0] = 2; // RESP_CODE_CONTACTS_START
+        uint32_t count = 0;
+        memcpy(&start_resp[1], &count, 4);
+        tcp_companion.writeFrame(start_resp, 5);
+
+        uint8_t end_resp[5];
+        end_resp[0] = 4; // RESP_CODE_END_OF_CONTACTS
+        uint32_t most_recent_lastmod = 0;
+        memcpy(&end_resp[1], &most_recent_lastmod, 4);
+        tcp_companion.writeFrame(end_resp, 5);
+      }
+      // CMD_GET_STATS (56) -- sub-type byte follows: 0=CORE, 1=RADIO, 2=PACKETS
+      else if (frame[0] == 56 && len >= 2) {
+        uint8_t sub_type = frame[1];
+        uint8_t resp[26];
+        resp[0] = 24; // RESP_CODE_STATS
+        resp[1] = sub_type;
+        if (sub_type == 0) { // CORE
+          int16_t batt_mv = (int16_t)board.getBattMilliVolts();
+          uint32_t uptime_secs = (uint32_t)(uptime_millis / 1000);
+          uint16_t err_flags = (uint16_t)_err_flags;
+          uint8_t queue_len = (uint8_t)_mgr->getOutboundTotal();
+          int i = 2;
+          memcpy(&resp[i], &batt_mv, 2); i += 2;
+          memcpy(&resp[i], &uptime_secs, 4); i += 4;
+          memcpy(&resp[i], &err_flags, 2); i += 2;
+          resp[i++] = queue_len;
+          tcp_companion.writeFrame(resp, i);
+        } else if (sub_type == 1) { // RADIO -- this is what the app shows as "noise floor"
+          int16_t noise_floor = (int16_t)_radio->getNoiseFloor();
+          int8_t last_rssi = (int8_t)radio_driver.getLastRSSI();
+          int8_t last_snr = (int8_t)(radio_driver.getLastSNR() * 4);
+          uint32_t tx_air_time = (uint32_t)(getTotalAirTime() / 1000);
+          uint32_t rx_air_time = (uint32_t)(getReceiveAirTime() / 1000);
+          int i = 2;
+          memcpy(&resp[i], &noise_floor, 2); i += 2;
+          resp[i++] = (uint8_t)last_rssi;
+          resp[i++] = (uint8_t)last_snr;
+          memcpy(&resp[i], &tx_air_time, 4); i += 4;
+          memcpy(&resp[i], &rx_air_time, 4); i += 4;
+          tcp_companion.writeFrame(resp, i);
+        } else if (sub_type == 2) { // PACKETS
+          uint32_t recv = radio_driver.getPacketsRecv();
+          uint32_t sent = radio_driver.getPacketsSent();
+          uint32_t sent_flood = getNumSentFlood();
+          uint32_t sent_direct = getNumSentDirect();
+          uint32_t recv_flood = getNumRecvFlood();
+          uint32_t recv_direct = getNumRecvDirect();
+          int i = 2;
+          memcpy(&resp[i], &recv, 4); i += 4;
+          memcpy(&resp[i], &sent, 4); i += 4;
+          memcpy(&resp[i], &sent_flood, 4); i += 4;
+          memcpy(&resp[i], &sent_direct, 4); i += 4;
+          memcpy(&resp[i], &recv_flood, 4); i += 4;
+          memcpy(&resp[i], &recv_direct, 4); i += 4;
+          tcp_companion.writeFrame(resp, i);
+        } else {
+          uint8_t err[2] = { 1, 1 }; // RESP_CODE_ERR, ERR_CODE_UNSUPPORTED_CMD
+          tcp_companion.writeFrame(err, 2);
+        }
+      }
+      // CMD_REBOOT (19) -- confirmed from capture: code byte + ASCII "reboot"
+      // confirmation text. Does a true in-place restart: re-execs this same
+      // binary with its original argv (read from /proc/self/cmdline), after
+      // cleanly closing the listening sockets so the new instance can
+      // re-bind them immediately. No systemd/supervisor required. If you'd
+      // rather delegate to a service manager, replace the body below with
+      // e.g. system("systemctl restart meshcored") and exit(0).
+      else if (frame[0] == 19 && len >= 7 && memcmp(&frame[1], "reboot", 6) == 0) {
+        uint8_t resp[1] = { 0 }; // RESP_CODE_OK
+        tcp_companion.writeFrame(resp, 1);
+//        DEBUG MC app
+//        printf("mc_companion: reboot requested by app -- restarting in place\n");
+        fflush(stdout);
+        usleep(200000); // let the socket write flush before we tear down
+
+        std::vector<std::string> args;
+        FILE* f = fopen("/proc/self/cmdline", "rb");
+        if (f) {
+          char buf[4096];
+          size_t n = fread(buf, 1, sizeof(buf) - 1, f);
+          buf[n] = '\0';
+          fclose(f);
+          size_t i = 0;
+          while (i < n) {
+            args.push_back(std::string(&buf[i]));
+            i += strlen(&buf[i]) + 1;
+          }
+        }
+
+        tcp_companion.stop(); // release TCP port so the new instance can rebind
+        mc_console.stop();    // release the unix socket likewise
+
+        if (!args.empty()) {
+          std::vector<char*> cargv;
+          for (auto& s : args) cargv.push_back(const_cast<char*>(s.c_str()));
+          cargv.push_back(nullptr);
+          execv(cargv[0], cargv.data());
+          // if execv returns at all, it failed -- fall through
+//        DEBUG MC app
+//          perror("mc_companion: execv failed, falling back to plain exit");
+        }
+        exit(0);
+      }
+      else if (frame[0] == 6 && len >= 5) {
+        uint32_t epoch;
+        memcpy(&epoch, &frame[1], 4);
+        rtc_clock.setCurrentTime(epoch);
+        uint8_t resp[1] = { 0 }; // RESP_CODE_OK
+        tcp_companion.writeFrame(resp, 1);
+      }
+      // CMD_SYNC_NEXT_MESSAGE (10) -- no queued text messages on this role
+      else if (frame[0] == 10) {
+        uint8_t resp[1] = { 10 }; // RESP_CODE_NO_MORE_MESSAGES
+        tcp_companion.writeFrame(resp, 1);
+      }
+      // CMD_SEND_CONTROL_DATA (55) -- confirmed from real traffic capture:
+      // frame[1] is the sub_type/control-type byte (NOT frame[2] as the
+      // wiki draft implied), frame[2..] is the rest of the raw control
+      // payload as already understood by createControlData()/onControlDataRecv().
+      // "Discover Nearby Nodes" and "Discover Regions" both send an
+      // identical CTL_TYPE_NODE_DISCOVER_REQ (0x80) frame -- same request,
+      // same fix.
+      else if (frame[0] == 55 && len >= 2) {
+        uint8_t sub_type = frame[1];
+        uint8_t ctl_type = sub_type & 0xF0;
+        if (ctl_type == CTL_TYPE_NODE_DISCOVER_REQ && len >= 7) {
+          // Rebuild the raw control payload exactly as the app sent it
+          // (frame[1..len-1]) and transmit it with the app's own tag, so
+          // later matching DISCOVER_RESP replies get recognised.
+          uint8_t data[16];
+          size_t dlen = len - 1;
+          if (dlen > sizeof(data)) dlen = sizeof(data);
+          memcpy(data, &frame[1], dlen);
+
+          memcpy(&pending_discover_tag, &data[2], 4);
+          pending_discover_until = futureMillis(60000);
+
+          auto pkt = createControlData(data, dlen);
+          if (pkt) {
+            sendZeroHop(pkt);
+          }
+          uint8_t resp[1] = { 0 }; // RESP_CODE_OK
+          tcp_companion.writeFrame(resp, 1);
+        } else {
+//          DEBUG MC app
+//          printf("mc_companion: CMD_SEND_CONTROL_DATA unhandled sub_type=0x%02X len=%u\n",
+//                 sub_type, (unsigned)len);
+
+          // Stay silent rather than guess an error code -- app currently
+          // tolerates no response here (shown to just proceed/time out).
+        }
+      }
+      // CMD_GET_CUSTOM_VARS (40) / CMD_SET_CUSTOM_VAR (41) -- this firmware
+      // doesn't implement a custom-vars store; respond minimally so the app
+      // doesn't hang waiting, rather than leaving these silently unanswered.
+      else if (frame[0] == 40) {
+        uint8_t resp[1] = { 21 }; // RESP_CODE_CUSTOM_VARS, empty value list
+        tcp_companion.writeFrame(resp, 1);
+      }
+      else if (frame[0] == 41) {
+        uint8_t resp[1] = { 0 }; // RESP_CODE_OK (accepted, not actually stored)
+        tcp_companion.writeFrame(resp, 1);
+      }
+      else if (frame[0] == 20) {
+        uint8_t resp[10];
+        resp[0] = 12; // RESP_CODE_BATT_AND_STORAGE
+        uint16_t mv = board.getBattMilliVolts();
+        memcpy(&resp[1], &mv, 2);
+        uint32_t used_kb = 0, total_kb = 0; // not tracked on this platform
+        memcpy(&resp[3], &used_kb, 4);
+        memcpy(&resp[7], &total_kb, 4);
+        tcp_companion.writeFrame(resp, 10);
+      }
+      // CLI data frames or unknown -- try as a handleCommand string
+      else if (len > 1 && frame[len-1] == 0) {
+        char reply[160];
+        handleCommand(0, (char*)frame, reply);
+        if (reply[0]) {
+          uint8_t resp[164];
+          resp[0] = 0; // RESP_CODE_OK
+          int rlen = strlen(reply);
+          memcpy(&resp[1], reply, rlen);
+          tcp_companion.writeFrame(resp, 1 + rlen);
+        }
+      }
+      // Truly unrecognized binary command -- log it so we can identify it
+      // from real traffic instead of guessing. This is what's currently
+      // firing for "Position Settings", "View Telemetry" follow-ups (if
+      // still broken), "Discover Regions", etc.
+      else {
+//        DEBUG MC app
+//        printf("mc_companion: UNHANDLED cmd=%u len=%u bytes:", (unsigned)frame[0], (unsigned)len);
+        for (size_t k = 0; k < len; k++) printf(" %02X", frame[k]);
+        printf("\n");
+      }
+    }
+  }
+#endif
+
+#if defined(ARDULINUX_PLATFORM) && defined(WITH_MC_CONSOLE)
+  {
+    char cmd[160];
+    if (mc_console.poll(cmd, sizeof(cmd))) {
+      char reply[160];
+      handleCommand(0, cmd, reply);
+      mc_console.sendReply(reply[0] ? reply : "OK");
+    }
+  }
 #endif
 
   mesh::Mesh::loop();

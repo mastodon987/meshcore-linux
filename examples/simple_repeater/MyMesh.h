@@ -35,6 +35,16 @@
 #include "helpers/snmp/SNMPOids.h"
 #endif
 
+#ifdef ARDULINUX_PLATFORM
+#ifdef WITH_TCP_COMPANION
+#include "helpers/linux/LinuxTCPCompanionInterface.h"
+#endif
+#ifdef WITH_MC_CONSOLE
+#include "helpers/linux/LinuxConsoleServer.h"
+extern const char *meshcoredConsoleSocketPath;
+#endif
+#endif
+
 #include <helpers/AdvertDataHelpers.h>
 #include <helpers/ArduinoHelpers.h>
 #include <helpers/ClientACL.h>
@@ -138,6 +148,12 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks {
 #endif
 #ifdef WITH_SNMP
   SNMPAgent snmp_agent;
+#endif
+#if defined(ARDULINUX_PLATFORM) && defined(WITH_TCP_COMPANION)
+  LinuxTCPCompanionInterface tcp_companion;
+#endif
+#if defined(ARDULINUX_PLATFORM) && defined(WITH_MC_CONSOLE)
+  LinuxConsoleServer mc_console;
 #endif
 
   void putNeighbour(const mesh::Identity& id, uint32_t timestamp, float snr);
