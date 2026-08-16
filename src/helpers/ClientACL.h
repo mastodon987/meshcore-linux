@@ -24,6 +24,7 @@ struct ClientInfo {
     struct {
       uint32_t sync_since;  // sync messages SINCE this timestamp (by OUR clock)
       uint32_t pending_ack;
+      uint8_t  pending_ack_attempt; // attempt byte used when generating pending_ack
       uint32_t push_post_timestamp;
       unsigned long ack_timeout;
       uint8_t  push_failures;
